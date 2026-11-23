@@ -1,4 +1,5 @@
 import logging
+import time
 from decimal import Decimal
 
 import aiohttp
@@ -19,6 +20,9 @@ APIRONE_CURRENCIES = {
     "usdc@eth": ("USDC (ERC20)", 6),
 }
 PAID_STATUSES = {"completed"}
+RATE_CACHE_SECONDS = 300
+RATE_STALE_SECONDS = 1800
+_rate_cache: dict[tuple[str, str], tuple[Decimal, float]] = {}
 
 
 def enabled_currencies() -> list[str]:
@@ -42,16 +46,32 @@ class ApironeClient:
 
     @staticmethod
     async def get_rate(currency: str, fiat: str) -> Decimal:
-        """How much of the fiat currency one coin is worth now, from https://apirone.com/docs/rate."""
+        """How much of the fiat currency one coin is worth now, from https://apirone.com/docs/rate.
+
+        Kept for a few minutes: Apirone limits frequent requests, and a stablecoin rate barely moves.
+        If Apirone can't be reached, a rate up to half an hour old is still used."""
         if fiat.lower() == "usd":
             return Decimal(1)  # USD stablecoins: 1 coin = 1 USD
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{API_BASE}/ticker", params={"currency": currency, "fiat": fiat.lower()}) as response:
-                response.raise_for_status()
-                data = await response.json()
-        rate = Decimal(str(data[fiat.lower()]))
-        if not Decimal("0.01") < rate < Decimal("1000"):
-            raise ValueError(f"Unexpected {currency}/{fiat} rate: {rate}")
+        key = (currency, fiat.lower())
+        cached = _rate_cache.get(key)
+        now = time.monotonic()
+        if cached is not None and now - cached[1] < RATE_CACHE_SECONDS:
+            return cached[0]
+        try:
+            async with aiohttp.ClientSession(headers={"User-Agent": "shop-bot/1.0"}) as session:
+                async with session.get(f"{API_BASE}/ticker",
+                                       params={"currency": currency, "fiat": fiat.lower()}) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+            rate = Decimal(str(data[fiat.lower()]))
+            if not Decimal("0.01") < rate < Decimal("1000"):
+                raise ValueError(f"Unexpected {currency}/{fiat} rate: {rate}")
+        except Exception as exception:
+            if cached is not None and now - cached[1] < RATE_STALE_SECONDS:
+                logging.warning(f"Apirone rate request failed, using the last rate: {exception}")
+                return cached[0]
+            raise
+        _rate_cache[key] = (rate, now)
         return rate
 
     @staticmethod

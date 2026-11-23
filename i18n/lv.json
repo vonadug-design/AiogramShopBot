@@ -392,7 +392,7 @@
     "usdc_bep20_top_up": "USDC BEP-20"
   },
   "user": {
-    "apirone_enter_amount": "💵 Ievadiet papildināšanas summu {currency_text} (no 5). Samaksāsiet tikpat {coin}.",
+    "apirone_enter_amount": "💵 Ievadiet papildināšanas summu {currency_text} (no 5). Summu {coin} bots aprēķinās pēc pašreizējā kursa nākamajā solī.",
     "apirone_invalid_amount": "⚠️ Ievadiet skaitli no 5, piemēram <code>25</code> vai <code>25.50</code>.",
     "apirone_invoice_created": "🧾 Rēķins par <b>{amount} {currency_text}</b> {coin} ir gatavs. Spiediet pogu, lai samaksātu. Rēķins derīgs 1 stundu, bilance tiks papildināta automātiski pēc tīkla apstiprinājuma.",
     "apirone_pay_button": "💳 Maksāt",
@@ -442,7 +442,7 @@
     "help_string": "🤝 Atbalsts",
     "insufficient_funds": "⚠️ Nepietiek līdzekļu!",
     "my_profile": "👤 Mans profils",
-    "my_profile_msg": "👤 <b>Jūsu profils\nID:</b> <code>{telegram_id}</code>\n\n<b>Bilance {currency_text}:</b>\n{fiat_balance}{currency_sym}",
+    "my_profile_msg": "👤 <b>Jūsu profils\nID:</b> <code>{telegram_id}</code>\n\n<b>Bilance {currency_text}:</b>\n{currency_sym}{fiat_balance:.2f}",
     "no_categories": "⚠️ Nav kategoriju",
     "no_purchases": "⚠️ Pirkumu vēl nav",
     "out_of_stock": "⚠️<b>Šīs preces ir izpārdotas vai to nepietiek:</b>\n\n",

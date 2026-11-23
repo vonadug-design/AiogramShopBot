@@ -392,7 +392,7 @@
     "usdc_bep20_top_up": "USDC BEP-20"
   },
   "user": {
-    "apirone_enter_amount": "💵 Введите сумму пополнения в {currency_text} (от 5). Оплатите столько же в {coin}.",
+    "apirone_enter_amount": "💵 Введите сумму пополнения в {currency_text} (от 5). Сумму в {coin} бот посчитает по текущему курсу на следующем шаге.",
     "apirone_invalid_amount": "⚠️ Введите число от 5, например <code>25</code> или <code>25.50</code>.",
     "apirone_invoice_created": "🧾 Счёт на <b>{amount} {currency_text}</b> в {coin} готов. Нажмите кнопку для оплаты. Счёт действует 1 час, баланс зачислится автоматически после подтверждения сети.",
     "apirone_pay_button": "💳 Оплатить",
@@ -442,7 +442,7 @@
     "help_string": "🤝 Поддержка",
     "insufficient_funds": "⚠️ Недостаточно средств!",
     "my_profile": "👤 Мой профиль",
-    "my_profile_msg": "👤 <b>Ваш профиль\nID:</b> <code>{telegram_id}</code>\n\n<b>Баланс в {currency_text}:</b>\n{fiat_balance}{currency_sym}",
+    "my_profile_msg": "👤 <b>Ваш профиль\nID:</b> <code>{telegram_id}</code>\n\n<b>Баланс в {currency_text}:</b>\n{currency_sym}{fiat_balance:.2f}",
     "no_categories": "⚠️ Категорий нет",
     "no_purchases": "⚠️ Покупок пока нет",
     "out_of_stock": "⚠️<b>Этих товаров нет в наличии или не хватает:</b>\n\n",

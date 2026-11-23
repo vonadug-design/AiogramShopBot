@@ -58,3 +58,36 @@ def test_invoice_in_eur_asks_for_converted_coin_amount(monkeypatch):
     asyncio.run(module.ApironeClient.create_invoice("usdt@trx", Decimal("10"), "https://cb", "t"))
     assert sent["amount"] == "11630000"
     assert sent["user-data"]["price"] == "10 EUR"
+
+
+def test_rate_is_cached_and_reused_when_apirone_fails(monkeypatch):
+    import asyncio
+    from decimal import Decimal
+    import crypto_api.apirone as module
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, fail): self.fail = fail
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        def raise_for_status(self):
+            if self.fail:
+                raise RuntimeError("429")
+        async def json(self): return {"eur": 0.9107}
+
+    class FakeSession:
+        def __init__(self, headers=None): assert headers and headers.get("User-Agent")
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        def get(self, url, params):
+            calls.append(params)
+            return FakeResponse(fail=len(calls) > 1)
+
+    module._rate_cache.clear()
+    monkeypatch.setattr(module.aiohttp, "ClientSession", FakeSession)
+    assert asyncio.run(module.ApironeClient.get_rate("usdt@trx", "EUR")) == Decimal("0.9107")
+    assert asyncio.run(module.ApironeClient.get_rate("usdt@trx", "EUR")) == Decimal("0.9107")
+    assert len(calls) == 1  # second call served from the cache
+    module._rate_cache[("usdt@trx", "eur")] = (Decimal("0.9"), module.time.monotonic() - 600)
+    assert asyncio.run(module.ApironeClient.get_rate("usdt@trx", "EUR")) == Decimal("0.9")  # stale but usable
+    module._rate_cache.clear()
