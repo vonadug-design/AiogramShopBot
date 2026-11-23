@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import config
 from config import SUPPORT_LINK
 import logging
-from bot import dp, main, redis
+from bot import dp, storefront_dp, main, redis
 from enums.bot_entity import BotEntity
 from enums.keyboard_button import KeyboardButton
 from enums.language import Language
@@ -16,7 +16,6 @@ from middleware.database import DBSessionMiddleware
 from middleware.language import I18nMiddleware
 from middleware.throttling_middleware import ThrottlingMiddleware
 from models.user import UserDTO
-from multibot import main as main_multibot
 from handlers.user.cart import cart_router
 from handlers.admin.admin import admin_router
 from handlers.user.all_categories import all_categories_router
@@ -134,7 +133,10 @@ async def banned_message(callback: CallbackQuery, language: Language):
 
 if __name__ == '__main__':
     if config.MULTIBOT:
-        main_multibot(main_router)
+        from multibot import main_router_multibot
+        dp.include_router(main_router_multibot)
+        storefront_dp.include_router(main_router)
+        main()
     else:
         dp.include_router(main_router)
         main()

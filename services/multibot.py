@@ -30,6 +30,32 @@ class Relocation:
     storefront: StorefrontBot | None
 
 
+class StorefrontBotCache:
+    """Bot objects for storefronts, built from the encrypted tokens on first use."""
+
+    def __init__(self):
+        self.bots: dict[int, Bot] = {}
+        self.session = None
+
+    def configure(self, session) -> None:
+        self.session = session
+
+    def forget(self, storefront_id: int) -> None:
+        self.bots.pop(storefront_id, None)
+
+    async def get(self, storefront_id: int) -> Bot | None:
+        if storefront_id not in self.bots:
+            async with get_db_session() as session:
+                token = await MultibotService.get_token(storefront_id, session)
+            if token is None:
+                return None
+            self.bots[storefront_id] = create_bot(token, session=self.session)
+        return self.bots[storefront_id]
+
+
+storefront_bot_cache = StorefrontBotCache()
+
+
 class MultibotService:
     """Pool of storefront bots that share one database.
 
@@ -134,6 +160,17 @@ class MultibotService:
             relocations.append(Relocation(telegram_id=telegram_id, storefront=target))
         await session_commit(session)
         return relocations
+
+    @staticmethod
+    async def get_languages(telegram_ids: list[int], session: AsyncSession | Session) -> dict:
+        from sqlalchemy import select
+        from db import session_execute
+        from models.user import User
+        if not telegram_ids:
+            return {}
+        result = await session_execute(
+            select(User.telegram_id, User.language).where(User.telegram_id.in_(telegram_ids)), session)
+        return {telegram_id: language for telegram_id, language in result.all()}
 
     @staticmethod
     async def notify_relocations(main_bot: Bot, relocations: list[Relocation],

@@ -1,4 +1,5 @@
 import logging
+import secrets
 import sys
 import traceback
 from contextlib import asynccontextmanager
@@ -37,6 +38,9 @@ from repositories.button_media import ButtonMediaRepository
 from services.media import MediaService
 from services.notification import NotificationService
 from services.wallet import WalletService
+from services.multibot import MultibotService, storefront_bot_cache
+from utils.media_relay import MediaRelayMiddleware
+from utils.token_crypto import webhook_secret
 from utils.telegram import create_bot, create_telegram_session
 from utils.utils import validate_i18n
 
@@ -44,6 +48,13 @@ redis = Redis(host=config.REDIS_HOST, password=config.REDIS_PASSWORD)
 session = create_telegram_session()
 bot = create_bot(config.TOKEN, session)
 dp = Dispatcher(storage=RedisStorage(redis))
+# Multibot mode: dp serves the main bot, storefront_dp serves the shop in every storefront bot
+storefront_dp = Dispatcher(storage=RedisStorage(redis))
+STOREFRONT_WEBHOOK_URL = f"{config.WEBHOOK_HOST}/webhook/bot/{{bot_id}}"
+if config.MULTIBOT:
+    # Photos uploaded through one bot become usable in every storefront bot
+    session.middleware(MediaRelayMiddleware(redis, config.MEDIA_CACHE_DIR, MultibotService.get_all_tokens))
+    storefront_bot_cache.configure(session)
 
 
 async def _startup() -> None:
@@ -87,6 +98,8 @@ async def _startup() -> None:
                     forwarding_address
                 )
                 sys.exit(1)
+    if config.MULTIBOT:
+        await MultibotService.restore_child_bot_webhooks(STOREFRONT_WEBHOOK_URL)
     for admin in config.ADMIN_ID_LIST:
         try:
             await bot.send_message(admin, 'Bot is working')
@@ -145,6 +158,24 @@ async def webhook(request: Request):
     except Exception as e:
         logging.error(f"Error processing webhook: {e}")
         return {"status": "error"}, status.HTTP_500_INTERNAL_SERVER_ERROR
+
+
+@app.post("/webhook/bot/{storefront_id}")
+async def storefront_webhook(storefront_id: int, request: Request):
+    if not config.MULTIBOT:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    received = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if not secrets.compare_digest(received, webhook_secret(storefront_id)):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+    storefront_bot = await storefront_bot_cache.get(storefront_id)
+    if storefront_bot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    try:
+        await storefront_dp.feed_webhook_update(storefront_bot, await request.json())
+        return {"status": "ok"}
+    except Exception as e:
+        logging.error(f"Error processing storefront webhook: {e}")
+        return {"status": "error"}
 
 
 @app.exception_handler(Exception)

@@ -7,7 +7,6 @@ import config
 from enums.announcement_type import AnnouncementType
 from enums.language import Language
 from models.user import UserDTO
-from multibot import on_startup, StorefrontRequestHandler
 from services.announcement import AnnouncementService
 from enums.storefront_status import StorefrontStatus
 from repositories.storefront_bot import StorefrontBotRepository
@@ -314,14 +313,25 @@ async def test_send_to_user_reports_only_forbidden(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_storefront_webhook_rejects_wrong_secret():
-    handler = StorefrontRequestHandler(dispatcher=SimpleNamespace())
-    request = SimpleNamespace(match_info={"bot_id": "3"},
-                              headers={"X-Telegram-Bot-Api-Secret-Token": webhook_secret(4)})
+async def test_storefront_cache_builds_bot_once_and_forgets(monkeypatch):
+    from services.multibot import StorefrontBotCache
+    built = []
 
-    response = await handler.handle(request)
+    async def _fake_get_token(storefront_id, session):
+        return None if storefront_id == 9 else "5:token"
 
-    assert response.status == 401
+    monkeypatch.setattr("services.multibot.MultibotService.get_token", _fake_get_token)
+    monkeypatch.setattr("services.multibot.get_db_session", lambda: _NullDbSession())
+    monkeypatch.setattr("services.multibot.create_bot", lambda token, session=None: built.append(token) or token)
+    cache = StorefrontBotCache()
+
+    assert await cache.get(1) == "5:token"
+    assert await cache.get(1) == "5:token"
+    assert built == ["5:token"]
+    assert await cache.get(9) is None
+    cache.forget(1)
+    await cache.get(1)
+    assert len(built) == 2
 
 
 @pytest.mark.asyncio
@@ -479,25 +489,3 @@ async def test_announcement_service_marks_restocking_not_new_once(monkeypatch):
     )
 
     assert len(set_not_new_calls) == 1
-
-
-@pytest.mark.asyncio
-async def test_multibot_startup_restores_child_webhooks(monkeypatch):
-    restored = []
-    created = []
-
-    async def _fake_create_db_and_tables():
-        created.append(True)
-
-    async def _fake_restore(url):
-        restored.append(url)
-
-    bot = _FakeBot("main-token")
-
-    monkeypatch.setattr("multibot.create_db_and_tables", _fake_create_db_and_tables)
-    monkeypatch.setattr("multibot.MultibotService.restore_child_bot_webhooks", _fake_restore)
-
-    await on_startup(SimpleNamespace(), bot)
-
-    assert created == [True]
-    assert restored == ["https://example.com/webhook/bot/{bot_id}"]
