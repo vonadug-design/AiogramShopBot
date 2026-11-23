@@ -308,6 +308,12 @@
     "usdc_bep20_top_up": "USDC BEP-20"
   },
   "user": {
+    "apirone_enter_amount": "💵 Enter the top-up amount in {currency_text} (from 5). You will pay the same amount in {coin}.",
+    "apirone_invalid_amount": "⚠️ Enter a number from 5, for example <code>25</code> or <code>25.50</code>.",
+    "apirone_invoice_created": "🧾 Invoice for <b>{amount} {currency_text}</b> in {coin} is ready. Tap the button to pay. The invoice is valid for 1 hour; the balance is credited automatically after network confirmation.",
+    "apirone_pay_button": "💳 Pay",
+    "apirone_error": "⚠️ The payment service is temporarily unavailable. Please try again later.",
+    "apirone_topped_up": "✅ Your balance has been topped up by <b>{amount} {currency_text}</b>.",
     "out_of_stock_race": "⚠️ Someone has just bought the last units of an item in your cart. Nothing was charged, please check your cart again.",
     "delivered_item": "📦 Item #{count}\n<code>{private_data}</code>",
     "storefront_open_button": "🛍 Open the shop",

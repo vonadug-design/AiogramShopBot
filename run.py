@@ -17,6 +17,7 @@ from middleware.language import I18nMiddleware
 from middleware.throttling_middleware import ThrottlingMiddleware
 from models.user import UserDTO
 from handlers.user.cart import cart_router
+from handlers.user.apirone import apirone_top_up_router
 from handlers.admin.admin import admin_router
 from handlers.user.all_categories import all_categories_router
 from handlers.user.my_profile import my_profile_router
@@ -103,6 +104,7 @@ users_routers = Router()
 users_routers.include_routers(
     all_categories_router,
     my_profile_router,
+    apirone_top_up_router,
     cart_router,
     review_management_router
 )

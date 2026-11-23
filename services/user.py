@@ -86,6 +86,14 @@ class UserService:
     async def get_top_up_buttons(callback_data: MyProfileCallback,
                                  language: Language) -> tuple[str, InlineKeyboardBuilder]:
         kb_builder = InlineKeyboardBuilder()
+        if getattr(config, "PAYMENT_PROVIDER", "kryptoexpress") == "apirone":
+            from callbacks import ApironeCallback
+            from crypto_api.apirone import APIRONE_CURRENCIES, enabled_currencies
+            for currency in enabled_currencies():
+                kb_builder.button(text=APIRONE_CURRENCIES[currency][0], callback_data=ApironeCallback(currency=currency))
+            kb_builder.adjust(1)
+            kb_builder.row(callback_data.get_back_button(language))
+            return get_text(language, BotEntity.USER, "choose_top_up_method"), kb_builder
         for cryptocurrency in Cryptocurrency.get_visible():
             kb_builder.button(
                 text=cryptocurrency.get_localized(language),

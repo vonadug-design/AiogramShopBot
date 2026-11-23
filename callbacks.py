@@ -312,3 +312,7 @@ class ReviewManagementCallback(BaseCallback, prefix="reviews"):
                                         user_role=user_role,
                                         page=page,
                                         confirmation=confirmation)
+
+
+class ApironeCallback(CallbackData, prefix="apirone"):
+    currency: str

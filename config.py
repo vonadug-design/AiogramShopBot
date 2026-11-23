@@ -34,6 +34,11 @@ BOT_TOKEN_ENCRYPTION_KEY = os.environ.get("BOT_TOKEN_ENCRYPTION_KEY")
 STOREFRONT_MAX_USERS = int(os.environ.get("STOREFRONT_MAX_USERS", "300"))
 # Where photos shared between storefront bots are kept
 MEDIA_CACHE_DIR = os.environ.get("MEDIA_CACHE_DIR", "media_cache")
+# Payments: "kryptoexpress" (original) or "apirone"
+PAYMENT_PROVIDER = os.environ.get("PAYMENT_PROVIDER", "kryptoexpress").lower()
+APIRONE_ACCOUNT = os.environ.get("APIRONE_ACCOUNT")
+APIRONE_CALLBACK_SECRET = os.environ.get("APIRONE_CALLBACK_SECRET")
+APIRONE_CURRENCIES = os.environ.get("APIRONE_CURRENCIES", "usdt@trx,usdt@bnb,usdt@ton")
 CURRENCY = Currency(os.environ.get("CURRENCY", "USD"))
 KRYPTO_EXPRESS_API_KEY = os.environ.get("KRYPTO_EXPRESS_API_KEY")
 KRYPTO_EXPRESS_API_URL = os.environ.get("KRYPTO_EXPRESS_API_URL")
