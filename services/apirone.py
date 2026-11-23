@@ -23,14 +23,15 @@ class ApironeService:
 
     @staticmethod
     async def create_top_up(user_id: int, currency: str, fiat_amount: Decimal,
-                            session: AsyncSession) -> str:
+                            session: AsyncSession) -> tuple[str, Decimal | None]:
+        """Returns the payment page link and how many coins it asks for."""
         invoice = await ApironeClient.create_invoice(
             currency, fiat_amount, ApironeService.callback_url(),
             title=f"Top up {fiat_amount} {config.CURRENCY.value}")
         session.add(ApironeInvoice(invoice_id=invoice["invoice"], user_id=user_id, currency=currency,
                                    fiat_amount=float(fiat_amount), status=invoice.get("status", "created")))
         await session_commit(session)
-        return invoice["invoice-url"]
+        return invoice["invoice-url"], invoice.get("coin_amount")
 
     @staticmethod
     async def process_callback(invoice_id: str) -> None:

@@ -418,6 +418,7 @@
     "review_request_reminder": "⭐ Atgādinājums: lūdzu, novērtējiet «{subcategory_name}». Tas ir viens pieskāriens:",
     "review_request_thanks": "Paldies par vērtējumu! {rating_stars}",
     "top_up_cancelled": "Papildināšana atcelta.",
+    "apirone_invoice_coin_amount": "💱 Jāmaksā: <b>{coin_amount} {coin}</b> (pēc pašreizējā kursa, tas ir fiksēts šim rēķinam).",
     "storefront_open_button": "🛍 Atvērt veikalu",
     "storefront_your_link": "👋 Jūsu personīgais veikals: @{bot_username}. Spiediet pogu zemāk, lai to atvērtu.\n\nSaglabājiet šo čatu: ja veikala saite mainīsies, jaunā atnāks šeit.",
     "storefront_none_available": "⏳ Veikals īslaicīgi nav pieejams. Atsūtīsim saiti šeit, tiklīdz tas būs gatavs.",

@@ -28,15 +28,18 @@ async def _send_invoice(message: Message, telegram_id: int, currency: str, amoun
                         session: AsyncSession, language: Language):
     user = await UserRepository.get_by_tgid(telegram_id, session)
     try:
-        pay_url = await ApironeService.create_top_up(user.id, currency, amount, session)
+        pay_url, coin_amount = await ApironeService.create_top_up(user.id, currency, amount, session)
     except Exception as exception:
         logging.error(f"Apirone invoice creation failed: {exception}")
         return await message.answer(get_text(language, BotEntity.USER, "apirone_error"))
     kb_builder = InlineKeyboardBuilder()
     kb_builder.button(text=get_text(language, BotEntity.USER, "apirone_pay_button"), url=pay_url)
-    await message.answer(get_text(language, BotEntity.USER, "apirone_invoice_created").format(
-        amount=amount, currency_text=config.CURRENCY.get_localized_text(),
-        coin=APIRONE_CURRENCIES[currency][0]), reply_markup=kb_builder.as_markup())
+    text = get_text(language, BotEntity.USER, "apirone_invoice_created").format(
+        amount=amount, currency_text=config.CURRENCY.get_localized_text(), coin=APIRONE_CURRENCIES[currency][0])
+    if coin_amount is not None:
+        text += "\n\n" + get_text(language, BotEntity.USER, "apirone_invoice_coin_amount").format(
+            coin_amount=coin_amount, coin=APIRONE_CURRENCIES[currency][0])
+    await message.answer(text, reply_markup=kb_builder.as_markup())
 
 
 @apirone_top_up_router.callback_query(IsUserExistFilter(), TopUpAmountCallback.filter())

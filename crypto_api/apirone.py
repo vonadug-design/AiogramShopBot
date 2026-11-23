@@ -58,9 +58,10 @@ class ApironeClient:
     async def create_invoice(currency: str, fiat_amount: Decimal, callback_url: str,
                              title: str, lifetime_seconds: int = 3600) -> dict:
         rate = await ApironeClient.get_rate(currency, config.CURRENCY.value)
+        coin_amount = coin_amount_for(fiat_amount, rate)
         body = {
             "currency": currency,
-            "amount": to_minor_units(currency, coin_amount_for(fiat_amount, rate)),
+            "amount": to_minor_units(currency, coin_amount),
             "lifetime": lifetime_seconds,
             "callback-url": callback_url,
             # Shown on the payment page; the amount above is what is actually charged in coins.
@@ -75,9 +76,9 @@ class ApironeClient:
                     body["callback_url"] = body.pop("callback-url")
                     async with session.post(url, json=body) as retry:
                         retry.raise_for_status()
-                        return await retry.json()
+                        return {**await retry.json(), "coin_amount": coin_amount}
                 response.raise_for_status()
-                return await response.json()
+                return {**await response.json(), "coin_amount": coin_amount}
 
     @staticmethod
     async def get_invoice(invoice_id: str) -> dict:
