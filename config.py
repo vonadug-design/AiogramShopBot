@@ -28,6 +28,10 @@ DB_HOST = os.environ.get("DB_HOST", "postgres")
 DB_NAME = os.environ.get("POSTGRES_DB", "aiogram-shop-bot")
 PAGE_ENTRIES = int(os.environ.get("PAGE_ENTRIES", "8"))
 MULTIBOT = os.environ.get("MULTIBOT", False) == 'true'
+# Fernet key used to encrypt storefront bot tokens in the database
+BOT_TOKEN_ENCRYPTION_KEY = os.environ.get("BOT_TOKEN_ENCRYPTION_KEY")
+# How many customers one storefront bot serves before new customers go to the next one
+STOREFRONT_MAX_USERS = int(os.environ.get("STOREFRONT_MAX_USERS", "300"))
 CURRENCY = Currency(os.environ.get("CURRENCY", "USD"))
 KRYPTO_EXPRESS_API_KEY = os.environ.get("KRYPTO_EXPRESS_API_KEY")
 KRYPTO_EXPRESS_API_URL = os.environ.get("KRYPTO_EXPRESS_API_URL")

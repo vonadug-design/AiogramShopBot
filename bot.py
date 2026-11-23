@@ -31,6 +31,7 @@ from models.review import ReviewAdmin
 from models.shipping_option import ShippingOptionAdmin
 from models.subcategory import SubcategoryAdmin
 from models.user import UserAdmin
+from models.storefront_bot import StorefrontBotAdmin
 from processing.processing import processing_router
 from repositories.button_media import ButtonMediaRepository
 from services.media import MediaService
@@ -113,6 +114,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 admin = Admin(app=app, engine=engine, authentication_backend=authentication_backend)
 admin.add_model_view(UserAdmin)
+admin.add_model_view(StorefrontBotAdmin)
 admin.add_model_view(BuyAdmin)
 admin.add_model_view(ShippingOptionAdmin)
 admin.add_model_view(CouponAdmin)
