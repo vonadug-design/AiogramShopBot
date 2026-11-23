@@ -9,7 +9,7 @@ from pathlib import Path
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from pyngrok import ngrok
+from pyngrok import ngrok, conf
 
 import config
 from enums.bot_entity import BotEntity
@@ -34,7 +34,9 @@ def get_bot_photo_id() -> str:
 def start_ngrok():
     ngrok_token = os.environ.get("NGROK_TOKEN")
     port = os.environ.get("WEBAPP_PORT")
-    ngrok.set_auth_token(ngrok_token)
+    # Pass the token at startup instead of saving it to ngrok.yml:
+    # ngrok v3 refuses to save it twice, which crashed the bot on every restart.
+    conf.get_default().auth_token = ngrok_token
     http_tunnel = ngrok.connect(f":{port}", "http")
     return http_tunnel.public_url
 

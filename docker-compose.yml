@@ -25,6 +25,10 @@ services:
       - caddy
     networks:
       - caddy
+    # Public DNS: some providers' DNS filters block ngrok and the Telegram/Apirone APIs.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     ports:
       - "127.0.0.1:5000:5000" # ${WEBAPP_PORT}:${WEBAPP_PORT}
     volumes:
