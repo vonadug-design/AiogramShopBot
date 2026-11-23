@@ -1,5 +1,6 @@
 """Admin menu -> Texts: change the welcome messages, rules, support text, button names and the welcome photo."""
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -33,7 +34,12 @@ async def _show(callback: CallbackQuery, text: str, kb_builder: InlineKeyboardBu
         await callback.message.delete()
         await callback.message.answer(text, reply_markup=kb_builder.as_markup())
     else:
-        await callback.message.edit_text(text, reply_markup=kb_builder.as_markup())
+        try:
+            await callback.message.edit_text(text, reply_markup=kb_builder.as_markup())
+        except TelegramBadRequest as exception:
+            # "Reset" redraws the same screen; Telegram refuses an edit that changes nothing.
+            if "message is not modified" not in str(exception):
+                raise
 
 
 @texts_router.callback_query(AdminIdFilter(Permission.TEXTS), TextsCallback.filter())

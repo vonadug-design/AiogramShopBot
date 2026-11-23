@@ -1,3 +1,7 @@
+import asyncio
+import logging
+
+from db import get_db_session
 from aiogram import Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -63,8 +67,19 @@ async def send_confirmation(**kwargs):
     callback_data: AnnouncementCallback = kwargs.get("callback_data")
     session: AsyncSession = kwargs.get("session")
     language: Language = kwargs.get("language")
-    await AnnouncementService.send_announcement(callback, callback_data, session, language)
-    await callback.message.delete()
+    # Runs in the background: Telegram resends an update that is not answered within ~10 seconds,
+    # and a broadcast to many customers takes much longer.
+    await callback.answer()
+
+    async def _run():
+        try:
+            async with get_db_session() as background_session:
+                await AnnouncementService.send_announcement(callback, callback_data, background_session, language)
+            await callback.message.delete()
+        except Exception as exception:
+            logging.error(f"Broadcast failed: {exception}")
+
+    asyncio.create_task(_run())
 
 
 @announcement_router.callback_query(AdminIdFilter(Permission.ANNOUNCEMENTS), AnnouncementCallback.filter())

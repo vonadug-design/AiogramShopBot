@@ -83,6 +83,7 @@ class _FakeBot:
 
 
 class _FakeMessage:
+    status_edits = []
     def __init__(self):
         self.answers = []
         self.chat = SimpleNamespace(id=77)
@@ -92,7 +93,14 @@ class _FakeMessage:
 
     async def answer(self, text):
         self.answers.append(text)
-        return SimpleNamespace(message_id=900, chat=SimpleNamespace(id=123))
+        message = SimpleNamespace(message_id=900, chat=SimpleNamespace(id=123), edits=[])
+
+        async def edit_text(new_text):
+            message.edits.append(new_text)
+            _FakeMessage.status_edits.append(new_text)
+
+        message.edit_text = edit_text
+        return message
 
     async def edit_reply_markup(self):
         return None
@@ -393,7 +401,7 @@ async def test_announcement_service_counts_multibot_successes(monkeypatch):
         Language.EN
     )
 
-    assert any("1" in message for message in updates)
+    assert any("1" in message for message in _FakeMessage.status_edits)
 
 
 @pytest.mark.asyncio

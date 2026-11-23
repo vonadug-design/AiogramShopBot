@@ -142,8 +142,9 @@ class TextsCallback(BaseCallback, prefix="texts"):
     reset: bool = False
 
     @staticmethod
-    def create(level: int, item: int = -1, language: Language | None = None, reset: bool = False):
-        return TextsCallback(level=level, item=item, language=language, reset=reset)
+    def create(level: int, item: int = -1, language: Language | None = None, reset: bool = False, page: int = 0):
+        # page is accepted because get_back_button() rebuilds callbacks with create(**model_dump())
+        return TextsCallback(level=level, item=item, language=language, reset=reset, page=page)
 
 
 class AnnouncementCallback(BaseCallback, prefix="announcement"):

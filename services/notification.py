@@ -30,6 +30,13 @@ from repositories.subcategory import SubcategoryRepository
 from utils.utils import get_text
 
 
+
+def _admin_language() -> Language:
+    """Language of notifications sent to owners/admins (ADMIN_LANGUAGE in .env, default English)."""
+    import config
+    return Language.from_locale(getattr(config, "ADMIN_LANGUAGE", None) or "en")
+
+
 class NotificationService:
     PRIVACY_RESTRICTED_PATTERN = "BUTTON_USER_PRIVACY_RESTRICTED"
     TG_USER_URL_PREFIX = "tg://user?id="
@@ -244,9 +251,9 @@ class NotificationService:
         await NotificationService.edit_caption(edited_payment_message, table_payment_dto.message_id,
                                                user_dto.telegram_id)
         if user_dto.telegram_username:
-            message = get_text(Language.EN, BotEntity.ADMIN, "notification_new_deposit_username")
+            message = get_text(_admin_language(), BotEntity.ADMIN, "notification_new_deposit_username")
         else:
-            message = get_text(Language.EN, BotEntity.ADMIN, "notification_new_deposit_id")
+            message = get_text(_admin_language(), BotEntity.ADMIN, "notification_new_deposit_id")
         message = message.format(
             username=user_dto.telegram_username,
             telegram_id=user_dto.telegram_id,
@@ -302,9 +309,9 @@ class NotificationService:
             category = category_map[item_example.category_id]
             subcategory = subcategory_map[item_example.subcategory_id]
             if user.telegram_username:
-                msg = get_text(Language.EN, BotEntity.ADMIN, "notification_purchase_with_username")
+                msg = get_text(_admin_language(), BotEntity.ADMIN, "notification_purchase_with_username")
             else:
-                msg = get_text(Language.EN, BotEntity.ADMIN, "notification_purchase_with_tgid")
+                msg = get_text(_admin_language(), BotEntity.ADMIN, "notification_purchase_with_tgid")
             cart_content.append(msg.format(
                 username=user.telegram_username,
                 telegram_id=user.telegram_id,
@@ -377,10 +384,10 @@ class NotificationService:
     @staticmethod
     async def withdrawal(withdraw_dto: WithdrawalDTO):
         kb_builder = InlineKeyboardBuilder()
-        [kb_builder.button(text=get_text(Language.EN, BotEntity.ADMIN, "transaction"),
+        [kb_builder.button(text=get_text(_admin_language(), BotEntity.ADMIN, "transaction"),
                            url=f"{withdraw_dto.cryptoCurrency.get_explorer_base_url()}/tx/{tx_id}")
          for tx_id in withdraw_dto.txIdList]
-        msg_text = get_text(Language.EN, BotEntity.ADMIN, "transaction_broadcasted")
+        msg_text = get_text(_admin_language(), BotEntity.ADMIN, "transaction_broadcasted")
         kb_builder.adjust(1)
         await NotificationService.send_to_admins(msg_text, kb_builder.as_markup())
 
@@ -407,5 +414,5 @@ class NotificationService:
                 user_role=UserRole.ADMIN
             )
         )
-        msg_text = get_text(Language.EN, BotEntity.ADMIN, "review_notification")
+        msg_text = get_text(_admin_language(), BotEntity.ADMIN, "review_notification")
         await NotificationService.send_to_admins(msg_text, kb_builder.as_markup())

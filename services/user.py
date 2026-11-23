@@ -31,6 +31,15 @@ class UserService:
     async def create_if_not_exist(user_dto: UserDTO,
                                   referrer_code: str | None,
                                   session: AsyncSession | Session) -> None:
+        if user_dto.telegram_username:
+            # Usernames are unique in the DB, but Telegram lets a username move to another account.
+            from sqlalchemy import update as sql_update
+            from db import session_execute
+            from models.user import User
+            await session_execute(sql_update(User)
+                                  .where(User.telegram_username == user_dto.telegram_username,
+                                         User.telegram_id != user_dto.telegram_id)
+                                  .values(telegram_username=None), session)
         user = await UserRepository.get_by_tgid(user_dto.telegram_id, session)
         match user:
             case None:

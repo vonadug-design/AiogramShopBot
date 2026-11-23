@@ -23,6 +23,14 @@ from utils.utils import get_text
 
 class AnnouncementService:
     @staticmethod
+    async def _update_status(message, text: str) -> None:
+        """Edits the progress message through the bot that sent it (in multibot mode that is a storefront)."""
+        try:
+            await message.edit_text(text)
+        except Exception as exception:
+            logging.error(exception)
+
+    @staticmethod
     async def _send_generated_announcement_to_user(callback: CallbackQuery,
                                                    telegram_id: int,
                                                    messages: list[str],
@@ -137,19 +145,15 @@ class AnnouncementService:
                         users_count=all_users_count,
                         status=get_text(language, BotEntity.ADMIN, "in_progress")
                     )
-                    await NotificationService.edit_message(message=msg,
-                                                           source_message_id=message.message_id,
-                                                           chat_id=message.chat.id)
+                    await AnnouncementService._update_status(message, msg)
                 await session_commit(session)
         if callback_data.announcement_type == AnnouncementType.RESTOCKING:
             await ItemRepository.set_not_new(session)
             await session_commit(session)
-        await NotificationService.edit_message(
-            message=message_template.format(
+        await AnnouncementService._update_status(
+            message, message_template.format(
                 counter=counter,
                 len=len(active_users),
                 users_count=all_users_count,
                 status=get_text(language, BotEntity.ADMIN, "finished")
-            ),
-            source_message_id=message.message_id,
-            chat_id=message.chat.id)
+            ))
