@@ -32,6 +32,8 @@ MULTIBOT = os.environ.get("MULTIBOT", False) == 'true'
 BOT_TOKEN_ENCRYPTION_KEY = os.environ.get("BOT_TOKEN_ENCRYPTION_KEY")
 # How many customers one storefront bot serves before new customers go to the next one
 STOREFRONT_MAX_USERS = int(os.environ.get("STOREFRONT_MAX_USERS", "300"))
+# Where photos shared between storefront bots are kept
+MEDIA_CACHE_DIR = os.environ.get("MEDIA_CACHE_DIR", "media_cache")
 CURRENCY = Currency(os.environ.get("CURRENCY", "USD"))
 KRYPTO_EXPRESS_API_KEY = os.environ.get("KRYPTO_EXPRESS_API_KEY")
 KRYPTO_EXPRESS_API_URL = os.environ.get("KRYPTO_EXPRESS_API_URL")

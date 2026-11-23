@@ -6,11 +6,11 @@ from typing import Any, Dict
 from aiohttp import web
 from aiogram import Bot, Dispatcher, Router
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.token import TokenValidationError, validate_token
 from aiogram.webhook.aiohttp_server import BaseRequestHandler, SimpleRequestHandler, setup_application
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
@@ -26,6 +26,7 @@ from repositories.storefront_bot import StorefrontBotRepository
 from services.multibot import MultibotService, AddBotResult, Relocation
 from services.user import UserService
 from utils.custom_filters import AdminIdFilter
+from utils.media_relay import MediaRelayMiddleware
 from utils.telegram import create_bot, create_telegram_session
 from utils.token_crypto import webhook_secret
 from utils.utils import get_text
@@ -209,9 +210,13 @@ async def on_startup(dispatcher: Dispatcher, bot: Bot):
 def main(main_router):
     global storefront_handler
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+    from aiogram.fsm.storage.redis import RedisStorage
+    redis = Redis(host=config.REDIS_HOST, password=config.REDIS_PASSWORD)
     session = create_telegram_session()
+    # Photos uploaded through one bot become usable in every storefront bot
+    session.middleware(MediaRelayMiddleware(redis, config.MEDIA_CACHE_DIR, MultibotService.get_all_tokens))
     bot = create_bot(MAIN_BOT_TOKEN, session=session)
-    storage = MemoryStorage()
+    storage = RedisStorage(redis)
 
     main_router_multibot.message.middleware(DBSessionMiddleware())
     main_router_multibot.message.middleware(I18nMiddleware())

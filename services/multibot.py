@@ -97,6 +97,13 @@ class MultibotService:
         return decrypt_token(storefront.token_encrypted)
 
     @staticmethod
+    async def get_all_tokens() -> list[str]:
+        """Main bot token followed by the tokens of all active storefronts."""
+        async with get_db_session() as session:
+            storefronts = await StorefrontBotRepository.get_active(session)
+            return [config.TOKEN] + [decrypt_token(storefront.token_encrypted) for storefront in storefronts]
+
+    @staticmethod
     async def assign_storefront(telegram_id: int, session: AsyncSession | Session) -> StorefrontBot | None:
         """Returns the customer's storefront, pinning them to the least loaded one if needed."""
         current = await StorefrontBotRepository.get_user_storefront(telegram_id, session)

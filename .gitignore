@@ -1,1 +1,3 @@
 /data/
+media_cache/
+__pycache__/
