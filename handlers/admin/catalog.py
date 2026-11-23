@@ -196,6 +196,8 @@ async def catalog_navigation(callback: CallbackQuery, callback_data: CatalogCall
         kb_builder.button(text=get_text(language, BotEntity.COMMON, "cancel"),
                           callback_data=CatalogCallback.create(0, callback_data.category_id))
         shown = await _show(callback, msg, kb_builder)
-        return await state.update_data(msg_id=shown.message_id, chat_id=shown.chat.id)
+        # After the photo is saved, "Back" returns here instead of the Media menu.
+        return await state.update_data(msg_id=shown.message_id, chat_id=shown.chat.id,
+                                       catalog_return=callback_data.category_id)
     text, kb_builder = await category_screen(callback_data.category_id, session, language)
     await _show(callback, text, kb_builder)

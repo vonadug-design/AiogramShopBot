@@ -8,7 +8,7 @@ from typing import Any
 
 from aiogram import Bot, Router
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.token import TokenValidationError, validate_token
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,8 +79,12 @@ async def _send_welcome(message: Message, telegram_id: int, language: Language, 
                                     reply_markup=_open_shop_markup(None, language, True))
     caption = get_text(language, BotEntity.USER, "storefront_your_link").format(bot_username=storefront.username)
     from services.custom_buttons import CustomButtonService
-    markup = (await CustomButtonService.add_rows(InlineKeyboardBuilder.from_markup(_open_shop_markup(storefront, language, True)),
-                                                 session)).as_markup()
+    # Link buttons go right under "Open the shop", the language button stays last.
+    kb_builder = InlineKeyboardBuilder.from_markup(_open_shop_markup(storefront, language))
+    await CustomButtonService.add_rows(kb_builder, session)
+    kb_builder.row(InlineKeyboardButton(text=get_text(language, BotEntity.USER, "language"),
+                                        callback_data=MainLanguageCallback(language=None).pack()))
+    markup = kb_builder.as_markup()
     photo = TextService.get_welcome_photo(language) or get_bot_photo_id()
     try:
         return await message.answer_photo(photo, caption=caption, reply_markup=markup)

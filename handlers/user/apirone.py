@@ -21,6 +21,7 @@ from utils.custom_filters import IsUserExistFilter
 from utils.utils import get_text
 
 apirone_top_up_router = Router()
+CANCEL_WORDS = {"cancel", "/cancel", "отмена", "отменить", "atcelt"}
 
 
 async def _send_invoice(message: Message, telegram_id: int, currency: str, amount: Decimal,
@@ -78,6 +79,9 @@ async def choose_coin(callback: CallbackQuery, callback_data: ApironeCallback, s
 
 @apirone_top_up_router.message(IsUserExistFilter(), F.text, StateFilter(UserStates.apirone_amount))
 async def receive_amount(message: Message, state: FSMContext, session: AsyncSession, language: Language):
+    if (message.text or "").strip().lower() in CANCEL_WORDS:
+        await state.set_state()
+        return await message.answer(get_text(language, BotEntity.USER, "top_up_cancelled"))
     amount: Decimal | None = PaymentService._parse_fiat_amount(message.text)
     if amount is None:
         return await message.answer(get_text(language, BotEntity.USER, "apirone_invalid_amount"))

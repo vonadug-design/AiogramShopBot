@@ -112,7 +112,8 @@ async def add_photo_item(message: Message, state: FSMContext, language: Language
     count = await PhotoStockService.add(message.from_user.id,
                                         PhotoStockService.media_id_from_message(message),
                                         message.caption.strip())
-    await message.answer(get_text(language, BotEntity.ADMIN, "add_items_photo_received").format(count=count))
+    key = "add_items_photo_received_restock" if (await state.get_data()).get("restock") else "add_items_photo_received"
+    await message.answer(get_text(language, BotEntity.ADMIN, key).format(count=count))
 
 
 @inventory_management.message(AdminIdFilter(Permission.INVENTORY), F.text, StateFilter(InventoryManagementStates.filter_entity))
