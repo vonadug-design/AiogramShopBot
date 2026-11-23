@@ -14,6 +14,7 @@ from services.notification import NotificationService
 from services.photo_stock import PhotoStockService
 from enums.bot_entity import BotEntity
 from utils.utils import get_text
+from enums.staff_role import Permission
 from utils.custom_filters import AdminIdFilter
 
 inventory_management = Router()
@@ -74,7 +75,7 @@ async def confirm_delete(**kwargs):
     await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
 
-@inventory_management.message(AdminIdFilter(), F.document, StateFilter(InventoryManagementStates.document))
+@inventory_management.message(AdminIdFilter(Permission.INVENTORY), F.document, StateFilter(InventoryManagementStates.document))
 async def add_items_document(message: Message, state: FSMContext, session: AsyncSession, language: Language):
     state_data = await state.get_data()
     await NotificationService.edit_reply_markup(message.bot,
@@ -90,7 +91,7 @@ async def add_items_document(message: Message, state: FSMContext, session: Async
     await state.clear()
 
 
-@inventory_management.message(AdminIdFilter(), F.text, StateFilter(InventoryManagementStates.item_type,
+@inventory_management.message(AdminIdFilter(Permission.INVENTORY), F.text, StateFilter(InventoryManagementStates.item_type,
                                                                    InventoryManagementStates.category,
                                                                    InventoryManagementStates.subcategory,
                                                                    InventoryManagementStates.price,
@@ -102,7 +103,7 @@ async def add_items_menu(message: Message, state: FSMContext, session: AsyncSess
     await state.update_data(msg_id=message.message_id, chat_id=message.chat.id)
 
 
-@inventory_management.message(AdminIdFilter(), F.photo, StateFilter(InventoryManagementStates.private_data))
+@inventory_management.message(AdminIdFilter(Permission.INVENTORY), F.photo, StateFilter(InventoryManagementStates.private_data))
 async def add_photo_item(message: Message, state: FSMContext, language: Language):
     """One photo with the key in its caption = one unit of stock. Albums work too."""
     if not message.caption or not message.caption.strip():
@@ -114,14 +115,14 @@ async def add_photo_item(message: Message, state: FSMContext, language: Language
     await message.answer(get_text(language, BotEntity.ADMIN, "add_items_photo_received").format(count=count))
 
 
-@inventory_management.message(AdminIdFilter(), F.text, StateFilter(InventoryManagementStates.filter_entity))
+@inventory_management.message(AdminIdFilter(Permission.INVENTORY), F.text, StateFilter(InventoryManagementStates.filter_entity))
 async def receive_filter_message(message: Message, state: FSMContext, session: AsyncSession, language: Language):
     await state.update_data(filter=message.html_text)
     msg, kb_builder = await AdminService.get_entity_picker(None, session, state, language)
     await message.answer(text=msg, reply_markup=kb_builder.as_markup())
 
 
-@inventory_management.callback_query(AdminIdFilter(), InventoryManagementCallback.filter())
+@inventory_management.callback_query(AdminIdFilter(Permission.INVENTORY), InventoryManagementCallback.filter())
 async def inventory_management_navigation(callback: CallbackQuery,
                                           state: FSMContext,
                                           callback_data: InventoryManagementCallback,

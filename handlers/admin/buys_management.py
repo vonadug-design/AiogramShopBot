@@ -7,6 +7,7 @@ from callbacks import BuysManagementCallback
 from enums.language import Language
 from handlers.admin.constants import BuysManagementStates
 from services.buys_management import BuysManagementService
+from enums.staff_role import Permission
 from utils.custom_filters import AdminIdFilter
 
 buys_management_router = Router()
@@ -26,7 +27,7 @@ async def set_track_number(**kwargs):
     await state.update_data(chat_id=message.chat.id, msg_id=message.message_id)
 
 
-@buys_management_router.message(AdminIdFilter(), F.text, StateFilter(BuysManagementStates.update_track_number))
+@buys_management_router.message(AdminIdFilter(Permission.BUYS), F.text, StateFilter(BuysManagementStates.update_track_number))
 async def receive_track_number(message: Message,
                                state: FSMContext,
                                session: AsyncSession,
@@ -35,7 +36,7 @@ async def receive_track_number(message: Message,
     await message.answer(text=msg, reply_markup=kb_builder.as_markup())
 
 
-@buys_management_router.callback_query(AdminIdFilter(), BuysManagementCallback.filter())
+@buys_management_router.callback_query(AdminIdFilter(Permission.BUYS), BuysManagementCallback.filter())
 async def announcement_navigation(callback: CallbackQuery,
                                   state: FSMContext,
                                   callback_data: BuysManagementCallback,

@@ -113,6 +113,11 @@ class UserService:
                                            language: Language) -> tuple[str, InlineKeyboardBuilder]:
         callback_data = callback_data or MyProfileCallback.create(level=3)
         user_id = None
+        if callback_data.user_role == UserRole.ADMIN and telegram_id is not None:
+            from services.staff import StaffService
+            from enums.staff_role import Permission
+            if not await StaffService.can(telegram_id, Permission.BUYS, session):
+                callback_data = callback_data.model_copy(update={"user_role": UserRole.USER})
         if callback_data.user_role == UserRole.ADMIN:
             back_button = AdminMenuCallback.create(0).get_back_button(language, 0)
         else:

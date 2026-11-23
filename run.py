@@ -5,6 +5,7 @@ from aiogram.types import ErrorEvent, Message, BufferedInputFile, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 import config
+from services.staff import StaffService
 from config import SUPPORT_LINK
 import logging
 from bot import dp, storefront_dp, main, redis
@@ -52,7 +53,7 @@ async def start(message: Message, command: CommandObject, session: AsyncSession,
     keyboard = [[all_categories_button, my_profile_button], [faq_button, help_button],
                 [reviews_button],
                 [cart_button]]
-    if telegram_id in config.ADMIN_ID_LIST:
+    if await StaffService.get_role(telegram_id, session) is not None:
         keyboard.append([admin_menu_button])
     start_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2, keyboard=keyboard)
     bot_photo_id = get_bot_photo_id()

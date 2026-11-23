@@ -34,6 +34,7 @@ from models.subcategory import SubcategoryAdmin
 from models.user import UserAdmin
 from models.storefront_bot import StorefrontBotAdmin
 from models.apirone_invoice import ApironeInvoiceAdmin
+from models.staff_member import StaffMemberAdmin
 from processing.processing import processing_router
 from processing.apirone import apirone_router
 from repositories.button_media import ButtonMediaRepository
@@ -131,6 +132,7 @@ admin = Admin(app=app, engine=engine, authentication_backend=authentication_back
 admin.add_model_view(UserAdmin)
 admin.add_model_view(StorefrontBotAdmin)
 admin.add_model_view(ApironeInvoiceAdmin)
+admin.add_model_view(StaffMemberAdmin)
 admin.add_model_view(BuyAdmin)
 admin.add_model_view(ShippingOptionAdmin)
 admin.add_model_view(CouponAdmin)

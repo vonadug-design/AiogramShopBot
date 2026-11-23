@@ -122,7 +122,8 @@ class NotificationService:
     @staticmethod
     async def send_to_admins(message: str | BufferedInputFile, reply_markup: types.InlineKeyboardMarkup | None):
         bot = create_bot(TOKEN)
-        for admin_id in ADMIN_ID_LIST:
+        from services.staff import StaffService
+        for admin_id in await StaffService.get_notification_ids():
             try:
                 if isinstance(message, str):
                     async def _send(current_markup):

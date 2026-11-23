@@ -24,6 +24,7 @@ from models.user import UserDTO
 from repositories.storefront_bot import StorefrontBotRepository
 from services.multibot import MultibotService, AddBotResult, Relocation, storefront_bot_cache
 from services.user import UserService
+from enums.staff_role import Permission
 from utils.custom_filters import AdminIdFilter
 from utils.utils import get_text
 
@@ -48,7 +49,7 @@ def _open_shop_markup(storefront: StorefrontBot, language: Language):
     return kb_builder.as_markup()
 
 
-@main_router_multibot.message(AdminIdFilter(), Command("add"))
+@main_router_multibot.message(AdminIdFilter(Permission.STOREFRONTS), Command("add"))
 async def command_add_bot(message: Message, command: CommandObject, session: AsyncSession) -> Any:
     if not command.args or not is_bot_token(command.args.strip()):
         return await message.answer(get_text(Language.EN, BotEntity.ADMIN, "multibot_invalid_token"))
@@ -71,7 +72,7 @@ async def command_add_bot(message: Message, command: CommandObject, session: Asy
     )
 
 
-@main_router_multibot.message(AdminIdFilter(), Command("bots"))
+@main_router_multibot.message(AdminIdFilter(Permission.STOREFRONTS), Command("bots"))
 async def command_list_bots(message: Message, session: AsyncSession) -> Any:
     storefronts = await StorefrontBotRepository.get_all(session)
     if not storefronts:
@@ -90,7 +91,7 @@ async def command_list_bots(message: Message, session: AsyncSession) -> Any:
     return await message.answer("\n".join(lines))
 
 
-@main_router_multibot.message(AdminIdFilter(), Command("ban"))
+@main_router_multibot.message(AdminIdFilter(Permission.STOREFRONTS), Command("ban"))
 async def command_ban_bot(message: Message, command: CommandObject, session: AsyncSession, bot: Bot) -> Any:
     """/ban <id>: the storefront was banned, move its customers and send them new links via the main bot."""
     if not command.args or not command.args.strip().isdigit():

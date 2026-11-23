@@ -11,6 +11,7 @@ from handlers.common.common import enable_search
 from models.buy import BuyDTO
 from services.buy import BuyService
 from services.user_management import UserManagementService
+from enums.staff_role import Permission
 from utils.custom_filters import AdminIdFilter
 
 user_management = Router()
@@ -46,14 +47,14 @@ async def user_operation(**kwargs):
     await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
 
-@user_management.message(AdminIdFilter(), F.text, StateFilter(UserManagementStates.user_entity))
+@user_management.message(AdminIdFilter(Permission.USERS), F.text, StateFilter(UserManagementStates.user_entity))
 async def receive_user_entity(message: Message, state: FSMContext, session: AsyncSession, language: Language):
     msg, kb_builder = await UserManagementService.get_user(message, state, session, language)
     message = await message.answer(text=msg, reply_markup=kb_builder.as_markup())
     await state.update_data(msg_id=message.message_id, chat_id=message.chat.id)
 
 
-@user_management.message(AdminIdFilter(), F.text, StateFilter(UserManagementStates.balance_amount))
+@user_management.message(AdminIdFilter(Permission.USERS), F.text, StateFilter(UserManagementStates.balance_amount))
 async def receive_balance_management_value(message: Message,
                                            state: FSMContext,
                                            session: AsyncSession,
@@ -96,14 +97,14 @@ async def refund_confirmation(**kwargs):
         await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
 
-@user_management.message(AdminIdFilter(), F.text, StateFilter(UserManagementStates.filter_username))
+@user_management.message(AdminIdFilter(Permission.USERS), F.text, StateFilter(UserManagementStates.filter_username))
 async def receive_filter_message(message: Message, state: FSMContext, session: AsyncSession, language: Language):
     await state.update_data(filter=message.html_text)
     msg, kb_builder = await UserManagementService.get_refund_menu(None, state, session, language)
     await message.answer(text=msg, reply_markup=kb_builder.as_markup())
 
 
-@user_management.callback_query(AdminIdFilter(), UserManagementCallback.filter())
+@user_management.callback_query(AdminIdFilter(Permission.USERS), UserManagementCallback.filter())
 async def inventory_management_navigation(callback: CallbackQuery,
                                           state: FSMContext,
                                           callback_data: UserManagementCallback,

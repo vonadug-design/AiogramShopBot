@@ -9,6 +9,7 @@ from enums.cryptocurrency import Cryptocurrency
 from enums.language import Language
 from handlers.admin.constants import WalletStates
 from services.wallet import WalletService
+from enums.staff_role import Permission
 from utils.custom_filters import AdminIdFilter
 from utils.utils import get_text
 
@@ -46,7 +47,7 @@ async def withdraw_confirmation(**kwargs):
     await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
 
-@wallet.message(AdminIdFilter(), F.text, StateFilter(WalletStates.crypto_address))
+@wallet.message(AdminIdFilter(Permission.WALLET), F.text, StateFilter(WalletStates.crypto_address))
 async def receive_address(message: Message, state: FSMContext, language: Language):
     state_data = await state.get_data()
     cryptocurrency = Cryptocurrency(state_data['cryptocurrency'])
@@ -61,7 +62,7 @@ async def receive_address(message: Message, state: FSMContext, language: Languag
     await message.answer(text=msg, reply_markup=kb_builder.as_markup())
 
 
-@wallet.callback_query(AdminIdFilter(), WalletCallback.filter())
+@wallet.callback_query(AdminIdFilter(Permission.WALLET), WalletCallback.filter())
 async def wallet_navigation(callback: CallbackQuery,
                             state: FSMContext,
                             callback_data: WalletCallback,

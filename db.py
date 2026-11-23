@@ -29,6 +29,7 @@ from models.review import Review
 from models.referral import ReferralBonus
 from models.storefront_bot import StorefrontBot
 from models.apirone_invoice import ApironeInvoice
+from models.staff_member import StaffMember
 
 url = f"postgresql+asyncpg://{config.DB_USER}:{config.DB_PASS}@{config.DB_HOST}:{config.DB_PORT}/{config.DB_NAME}"
 engine = create_async_engine(url, echo=True)

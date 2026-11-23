@@ -364,7 +364,9 @@ class ReviewService:
                                     callback_data: ReviewManagementCallback,
                                     session: AsyncSession,
                                     language: Language):
-        is_admin = callback.from_user.id in config.ADMIN_ID_LIST
+        from services.staff import StaffService
+        from enums.staff_role import Permission
+        is_admin = await StaffService.can(callback.from_user.id, Permission.REVIEWS, session)
         review_field = "text" if callback_data.level == 7 else "image_id"
         if callback_data.user_role == UserRole.ADMIN and is_admin:
             review_dto = await ReviewRepository.get_by_id(callback_data.review_id, session)

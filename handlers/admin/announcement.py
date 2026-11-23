@@ -9,6 +9,7 @@ from enums.language import Language
 from handlers.admin.constants import AnnouncementStates, AnnouncementsConstants
 from services.announcement import AnnouncementService
 from services.item import ItemService
+from enums.staff_role import Permission
 from utils.custom_filters import AdminIdFilter
 from utils.utils import get_text
 
@@ -30,7 +31,7 @@ async def send_everyone(**kwargs):
     await state.set_state(AnnouncementStates.announcement_msg)
 
 
-@announcement_router.message(AdminIdFilter(), StateFilter(AnnouncementStates.announcement_msg))
+@announcement_router.message(AdminIdFilter(Permission.ANNOUNCEMENTS), StateFilter(AnnouncementStates.announcement_msg))
 async def receive_admin_message(message: Message, state: FSMContext, language: Language):
     await state.clear()
     cancel_text = get_text(language, BotEntity.COMMON, "cancel")
@@ -66,7 +67,7 @@ async def send_confirmation(**kwargs):
     await callback.message.delete()
 
 
-@announcement_router.callback_query(AdminIdFilter(), AnnouncementCallback.filter())
+@announcement_router.callback_query(AdminIdFilter(Permission.ANNOUNCEMENTS), AnnouncementCallback.filter())
 async def announcement_navigation(callback: CallbackQuery,
                                   state: FSMContext,
                                   callback_data: AnnouncementCallback,

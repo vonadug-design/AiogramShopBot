@@ -6,6 +6,7 @@ import config
 from callbacks import StatisticsCallback
 from enums.language import Language
 from services.statistics import StatisticsService
+from enums.staff_role import Permission
 from utils.custom_filters import AdminIdFilter
 
 statistics = Router()
@@ -43,7 +44,7 @@ async def entity_statistics(**kwargs):
     await callback.message.answer_photo(photo=media.media, caption=media.caption, reply_markup=kb_builder.as_markup())
 
 
-@statistics.callback_query(AdminIdFilter(), StatisticsCallback.filter())
+@statistics.callback_query(AdminIdFilter(Permission.STATISTICS), StatisticsCallback.filter())
 async def statistics_navigation(callback: CallbackQuery, state: FSMContext, callback_data: StatisticsCallback,
                                 session: AsyncSession, language: Language):
     current_level = callback_data.level
