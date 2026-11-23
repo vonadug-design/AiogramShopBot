@@ -5,7 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from callbacks import AdminMenuCallback, AnnouncementCallback, InventoryManagementCallback, \
     UserManagementCallback, StatisticsCallback, WalletCallback, MediaManagementCallback, CouponManagementCallback, \
     ShippingManagementCallback, MyProfileCallback, ReviewManagementCallback, TextsCallback, CatalogCallback, \
-    LinkButtonsCallback
+    LinkButtonsCallback, DataCallback
 from enums.bot_entity import BotEntity
 from enums.keyboard_button import KeyboardButton as KB
 from enums.language import Language
@@ -22,6 +22,7 @@ from handlers.admin.wallet import wallet
 from handlers.admin.texts import texts_router
 from handlers.admin.catalog import catalog_router
 from handlers.admin.link_buttons import link_buttons_router
+from handlers.admin.data import data_router
 from enums.staff_role import Permission, StaffRole
 from services.staff import StaffService
 from utils.custom_filters import AdminIdFilter
@@ -41,7 +42,8 @@ admin_router.include_routers(announcement_router,
                              buys_management_router,
                              texts_router,
                              catalog_router,
-                             link_buttons_router)
+                             link_buttons_router,
+                             data_router)
 
 
 @admin_router.message(F.text.in_(KB.get_localized_set(KB.ADMIN_MENU)), AdminIdFilter())
@@ -69,6 +71,7 @@ async def admin(**kwargs):
         (Permission.REVIEWS, "reviews_management", ReviewManagementCallback.create(level=5, user_role=UserRole.ADMIN)),
         (Permission.TEXTS, "texts_management", TextsCallback.create(level=0)),
         (Permission.TEXTS, "links_management", LinkButtonsCallback.create(level=0)),
+        (Permission.STAFF, "data_management", DataCallback()),
     ]
     for permission, text_key, callback_data in menu:
         if await StaffService.can(message.from_user.id, permission):

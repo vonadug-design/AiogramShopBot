@@ -171,6 +171,11 @@ class LinkButtonsCallback(BaseCallback, prefix="links"):
         return LinkButtonsCallback(level=level, button_id=button_id, action=action, page=page)
 
 
+class DataCallback(CallbackData, prefix="data"):
+    """Admin menu -> Data: user numbers, user list file, database copy."""
+    action: str | None = ""  # aiogram unpacks an empty field as None
+
+
 class ReviewRequestCallback(CallbackData, prefix="rate"):
     """One-tap rating under the review request sent after a purchase."""
     buy_item_id: int

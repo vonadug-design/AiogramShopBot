@@ -103,6 +103,13 @@ class BuyService:
             kb_builder.button(text=get_text(language, BotEntity.USER, "purchase_resend_button"),
                               callback_data=MyProfileCallback.create(level=8, buy_id=callback_data.buy_id,
                                                                      buyItem_id=callback_data.buyItem_id))
+        if callback_data.user_role == UserRole.USER:
+            from services.custom_buttons import CustomButtonService
+            support_url = CustomButtonService.get_support_link_with_text(
+                get_text(language, BotEntity.USER, "purchase_problem_text").format(buy_id=buy.id,
+                                                                                   subcategory_name=subcategory.name))
+            if support_url:
+                kb_builder.button(text=get_text(language, BotEntity.USER, "purchase_problem_button"), url=support_url)
         kb_builder.adjust(1)
         kb_builder.row(callback_data.get_back_button(language))
         if len(msg) > 1024:

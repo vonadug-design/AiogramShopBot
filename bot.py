@@ -113,6 +113,8 @@ async def _startup() -> None:
         await MultibotService.restore_child_bot_webhooks(STOREFRONT_WEBHOOK_URL)
     from services.review_request import ReviewRequestService
     background_tasks.add(asyncio.create_task(ReviewRequestService.run_forever()))
+    from services.backup import BackupService
+    background_tasks.add(asyncio.create_task(BackupService.run_forever()))
     for admin in config.ADMIN_ID_LIST:
         try:
             await bot.send_message(admin, 'Bot is working')

@@ -81,6 +81,15 @@ class CustomButtonService:
             or config.SUPPORT_LINK or None
 
     @staticmethod
+    def get_support_link_with_text(text: str) -> str | None:
+        """The support link; a Telegram chat link opens with this message already typed in."""
+        from urllib.parse import quote
+        link = CustomButtonService.get_support_link()
+        if link and re.match(r"^https://t\.me/[A-Za-z0-9_]{4,32}/?$", link):
+            return f"{link.rstrip('/')}?text={quote(text)}"
+        return link
+
+    @staticmethod
     async def set_support_link(url: str | None, session: AsyncSession) -> None:
         await session_execute(delete(TextOverride).where(TextOverride.language == ALL_LANGUAGES,
                                                          TextOverride.entity == BotEntity.USER.name,
