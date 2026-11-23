@@ -6,6 +6,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 import config
 from services.staff import StaffService
+from services.texts import TextService
 from config import SUPPORT_LINK
 import logging
 from bot import dp, storefront_dp, main, redis
@@ -56,7 +57,7 @@ async def start(message: Message, command: CommandObject, session: AsyncSession,
     if await StaffService.get_role(telegram_id, session) is not None:
         keyboard.append([admin_menu_button])
     start_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2, keyboard=keyboard)
-    bot_photo_id = get_bot_photo_id()
+    bot_photo_id = TextService.get_welcome_photo(language) or get_bot_photo_id()
     await message.answer_photo(photo=bot_photo_id,
                                caption=get_text(language, BotEntity.COMMON, "start_message"),
                                reply_markup=start_markup)

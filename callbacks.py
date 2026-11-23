@@ -131,12 +131,29 @@ class AdminMenuCallback(BaseCallback, prefix="admin_menu"):
         return AdminMenuCallback(level=level, page=page)
 
 
-class AnnouncementCallback(BaseCallback, prefix="announcement"):
-    announcement_type: AnnouncementType | None
+class MainLanguageCallback(CallbackData, prefix="mlang"):
+    """Language choice in the main bot (multibot mode). language None opens the picker."""
+    language: Language | None = None
+
+
+class TextsCallback(BaseCallback, prefix="texts"):
+    item: int = -1
+    language: Language | None = None
+    reset: bool = False
 
     @staticmethod
-    def create(level: int, announcement_type: AnnouncementType | None = None, page: int = 0):
-        return AnnouncementCallback(level=level, announcement_type=announcement_type, page=page)
+    def create(level: int, item: int = -1, language: Language | None = None, reset: bool = False):
+        return TextsCallback(level=level, item=item, language=language, reset=reset)
+
+
+class AnnouncementCallback(BaseCallback, prefix="announcement"):
+    announcement_type: AnnouncementType | None
+    via_main: bool = False  # multibot: send only through the main bot
+
+    @staticmethod
+    def create(level: int, announcement_type: AnnouncementType | None = None, page: int = 0,
+               via_main: bool = False):
+        return AnnouncementCallback(level=level, announcement_type=announcement_type, page=page, via_main=via_main)
 
 
 class InventoryManagementCallback(BaseCallback, SortingCallback, prefix="inventory_management"):

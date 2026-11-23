@@ -8,7 +8,7 @@ from typing import Any
 
 from aiogram import Bot, Router
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.token import TokenValidationError, validate_token
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,12 +21,17 @@ from middleware.database import DBSessionMiddleware
 from middleware.language import I18nMiddleware
 from models.storefront_bot import StorefrontBot
 from models.user import UserDTO
+from repositories.user import UserRepository
+from callbacks import MainLanguageCallback
+from services.texts import TextService
+from db import session_commit
 from repositories.storefront_bot import StorefrontBotRepository
 from services.multibot import MultibotService, AddBotResult, Relocation, storefront_bot_cache
 from services.user import UserService
 from enums.staff_role import Permission
 from utils.custom_filters import AdminIdFilter
-from utils.utils import get_text
+from utils.token_crypto import decrypt_token
+from utils.utils import get_text, get_bot_photo_id
 
 STOREFRONT_WEBHOOK_PATH = "/webhook/bot/{bot_id}"
 OTHER_BOTS_URL = f"{config.WEBHOOK_HOST}{STOREFRONT_WEBHOOK_PATH}"
@@ -42,11 +47,44 @@ def is_bot_token(value: str) -> bool:
     return True
 
 
-def _open_shop_markup(storefront: StorefrontBot, language: Language):
+def _open_shop_markup(storefront: StorefrontBot | None, language: Language, with_language_button: bool = False):
     kb_builder = InlineKeyboardBuilder()
-    kb_builder.button(text=get_text(language, BotEntity.USER, "storefront_open_button"),
-                      url=f"https://t.me/{storefront.username}")
+    if storefront is not None:
+        kb_builder.button(text=get_text(language, BotEntity.USER, "storefront_open_button"),
+                          url=f"https://t.me/{storefront.username}")
+    if with_language_button:
+        kb_builder.button(text=get_text(language, BotEntity.USER, "language"),
+                          callback_data=MainLanguageCallback(language=None))
+    kb_builder.adjust(1)
     return kb_builder.as_markup()
+
+
+def _language_picker_markup():
+    kb_builder = InlineKeyboardBuilder()
+    for language in Language:
+        kb_builder.button(text=f"{language.get_flag_emoji()} {language.name}",
+                          callback_data=MainLanguageCallback(language=language))
+    kb_builder.adjust(3)
+    return kb_builder.as_markup()
+
+
+LANGUAGE_PICKER_TEXT = "🌍 Choose your language · Выберите язык · Izvēlieties valodu"
+
+
+async def _send_welcome(message: Message, telegram_id: int, language: Language, session: AsyncSession):
+    """Welcome photo + text + "Open the shop" button with the customer's personal storefront."""
+    storefront = await MultibotService.assign_storefront(telegram_id, session)
+    if storefront is None:
+        return await message.answer(get_text(language, BotEntity.USER, "storefront_none_available"),
+                                    reply_markup=_open_shop_markup(None, language, True))
+    caption = get_text(language, BotEntity.USER, "storefront_your_link").format(bot_username=storefront.username)
+    markup = _open_shop_markup(storefront, language, True)
+    photo = TextService.get_welcome_photo(language) or get_bot_photo_id()
+    try:
+        return await message.answer_photo(photo, caption=caption, reply_markup=markup)
+    except Exception as exception:
+        logging.warning(f"Welcome photo failed, sending text only: {exception}")
+        return await message.answer(caption, reply_markup=markup)
 
 
 @main_router_multibot.message(AdminIdFilter(Permission.STOREFRONTS), Command("add"))
@@ -125,24 +163,74 @@ async def command_ban_bot(message: Message, command: CommandObject, session: Asy
     ))
 
 
+@main_router_multibot.message(AdminIdFilter(Permission.STOREFRONTS), Command("unban"))
+async def command_unban_bot(message: Message, command: CommandObject, session: AsyncSession,
+                            language: Language = Language.EN) -> Any:
+    """/unban <id>: a storefront marked as banned by mistake (or unbanned by Telegram) takes customers again."""
+    if not command.args or not command.args.strip().isdigit():
+        return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_unban_usage"))
+    storefront = await StorefrontBotRepository.get_by_id(int(command.args.strip()), session)
+    if storefront is None:
+        return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_bot_not_found"))
+    if storefront.status == StorefrontStatus.ACTIVE:
+        return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_bot_already_active"))
+    child_bot = MultibotService.build_bot(decrypt_token(storefront.token_encrypted))
+    try:
+        await child_bot.get_me()
+        await MultibotService._set_webhook(child_bot, storefront.id, OTHER_BOTS_URL)
+    except Exception as exception:
+        logging.warning(exception)
+        return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_unban_failed"))
+    finally:
+        await child_bot.session.close()
+    await StorefrontBotRepository.set_status(storefront.id, StorefrontStatus.ACTIVE, session)
+    await session_commit(session)
+    storefront_bot_cache.forget(storefront.id)
+    return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_unbanned").format(
+        bot_username=storefront.username))
+
+
+@main_router_multibot.message(Command("language"))
+async def command_language(message: Message):
+    return await message.answer(LANGUAGE_PICKER_TEXT, reply_markup=_language_picker_markup())
+
+
+@main_router_multibot.callback_query(MainLanguageCallback.filter())
+async def main_language_chosen(callback: CallbackQuery, callback_data: MainLanguageCallback,
+                               session: AsyncSession, language: Language):
+    if callback_data.language is None:
+        await callback.answer()
+        return await callback.message.answer(LANGUAGE_PICKER_TEXT, reply_markup=_language_picker_markup())
+    user = await UserRepository.get_by_tgid(callback.from_user.id, session)
+    if user is not None:
+        user.language = callback_data.language
+        await UserRepository.update(user, session)
+        await session_commit(session)
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception as exception:
+        logging.info(exception)
+    await _send_welcome(callback.message, callback.from_user.id, callback_data.language, session)
+
+
 @main_router_multibot.message(CommandStart())
 @main_router_multibot.message()
 async def main_bot_start(message: Message, session: AsyncSession, language: Language,
                          command: CommandObject | None = None):
-    """Main bot: registers the customer and gives them the link to their personal storefront."""
+    """Main bot: registers the customer; new customers pick a language first, then get their storefront link."""
+    is_new = await UserRepository.get_by_tgid(message.from_user.id, session) is None
     await UserService.create_if_not_exist(UserDTO(
         telegram_username=message.from_user.username,
         telegram_id=message.from_user.id,
         language=language
     ), command.args if command else None, session)
-    storefront = await MultibotService.assign_storefront(message.from_user.id, session)
-    if storefront is None:
-        return await message.answer(get_text(language, BotEntity.USER, "storefront_none_available"))
-    return await message.answer(
-        get_text(language, BotEntity.USER, "storefront_your_link").format(bot_username=storefront.username),
-        reply_markup=_open_shop_markup(storefront, language)
-    )
+    if is_new:
+        return await message.answer(LANGUAGE_PICKER_TEXT, reply_markup=_language_picker_markup())
+    return await _send_welcome(message, message.from_user.id, language, session)
 
 
 main_router_multibot.message.middleware(DBSessionMiddleware())
 main_router_multibot.message.middleware(I18nMiddleware())
+main_router_multibot.callback_query.middleware(DBSessionMiddleware())
+main_router_multibot.callback_query.middleware(I18nMiddleware())

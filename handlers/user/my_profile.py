@@ -1,3 +1,4 @@
+from services.ownership import OwnershipService
 from aiogram import Router, F
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -172,6 +173,17 @@ async def navigate(callback: CallbackQuery,
                    session: AsyncSession,
                    state: FSMContext,
                    language: Language):
+    if callback_data.buy_id is not None or callback_data.buyItem_id is not None:
+        from enums.user_role import UserRole
+        from enums.staff_role import Permission
+        from services.staff import StaffService
+        if callback_data.user_role == UserRole.ADMIN:
+            allowed = await StaffService.can(callback.from_user.id, Permission.BUYS, session)
+        else:
+            allowed = await OwnershipService.owns_buy(callback.from_user.id, callback_data.buy_id,
+                                                      callback_data.buyItem_id, session)
+        if not allowed:
+            return await callback.answer()
     current_level = callback_data.level
 
     levels = {

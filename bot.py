@@ -35,6 +35,7 @@ from models.user import UserAdmin
 from models.storefront_bot import StorefrontBotAdmin
 from models.apirone_invoice import ApironeInvoiceAdmin
 from models.staff_member import StaffMemberAdmin
+from models.text_override import TextOverrideAdmin
 from processing.processing import processing_router
 from processing.apirone import apirone_router
 from repositories.button_media import ButtonMediaRepository
@@ -62,6 +63,8 @@ if config.MULTIBOT:
 
 async def _startup() -> None:
     await create_db_and_tables()
+    from services.texts import TextService
+    await TextService.load()
     await bot.set_webhook(
         url=config.WEBHOOK_URL,
         secret_token=config.WEBHOOK_SECRET_TOKEN
@@ -133,6 +136,7 @@ admin.add_model_view(UserAdmin)
 admin.add_model_view(StorefrontBotAdmin)
 admin.add_model_view(ApironeInvoiceAdmin)
 admin.add_model_view(StaffMemberAdmin)
+admin.add_model_view(TextOverrideAdmin)
 admin.add_model_view(BuyAdmin)
 admin.add_model_view(ShippingOptionAdmin)
 admin.add_model_view(CouponAdmin)
@@ -154,7 +158,7 @@ app.include_router(apirone_router)
 @app.post(config.WEBHOOK_PATH)
 async def webhook(request: Request):
     secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-    if secret_token != config.WEBHOOK_SECRET_TOKEN:
+    if not secrets.compare_digest(secret_token or "", config.WEBHOOK_SECRET_TOKEN or ""):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
     try:
@@ -166,6 +170,35 @@ async def webhook(request: Request):
         return {"status": "error"}, status.HTTP_500_INTERNAL_SERVER_ERROR
 
 
+async def _answer_from_inactive_storefront(storefront_id: int, update_data: dict) -> None:
+    from repositories.storefront_bot import StorefrontBotRepository
+    from utils.token_crypto import decrypt_token
+    from enums.bot_entity import BotEntity
+    from enums.language import Language
+    from utils.utils import get_text
+    from db import get_db_session
+    message = update_data.get("message") or {}
+    chat_id = (message.get("chat") or {}).get("id")
+    if chat_id is None or (message.get("chat") or {}).get("type") != "private":
+        return
+    try:
+        async with get_db_session() as db_session:
+            storefront = await StorefrontBotRepository.get_by_id(storefront_id, db_session)
+            if storefront is None:
+                return
+            languages = await MultibotService.get_languages([chat_id], db_session)
+        language = languages.get(chat_id) or Language.from_locale((message.get("from") or {}).get("language_code"))
+        main_username = (await bot.me()).username
+        child_bot = MultibotService.build_bot(decrypt_token(storefront.token_encrypted))
+        try:
+            await child_bot.send_message(chat_id, get_text(language, BotEntity.USER, "storefront_inactive").format(
+                main_bot_username=main_username))
+        finally:
+            await child_bot.session.close()
+    except Exception as exception:
+        logging.info(f"Inactive storefront {storefront_id} could not answer: {exception}")
+
+
 @app.post("/webhook/bot/{storefront_id}")
 async def storefront_webhook(storefront_id: int, request: Request):
     if not config.MULTIBOT:
@@ -175,7 +208,9 @@ async def storefront_webhook(storefront_id: int, request: Request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
     storefront_bot = await storefront_bot_cache.get(storefront_id)
     if storefront_bot is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        # A storefront we marked as banned/disabled: point whoever writes to it to the main bot.
+        await _answer_from_inactive_storefront(storefront_id, await request.json())
+        return {"status": "ok"}
     try:
         await storefront_dp.feed_webhook_update(storefront_bot, await request.json())
         return {"status": "ok"}

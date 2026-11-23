@@ -87,6 +87,8 @@ class _FakeMessage:
         self.answers = []
         self.chat = SimpleNamespace(id=77)
         self.message_id = 501
+        self.html_text = "announcement"
+        self.caption = None
 
     async def answer(self, text):
         self.answers.append(text)
@@ -274,7 +276,7 @@ async def test_send_to_user_prefers_own_storefront_then_main(monkeypatch):
     from aiogram.exceptions import TelegramForbiddenError
     built = []
 
-    async def _fake_tokens(telegram_id, include_all_storefronts):
+    async def _fake_tokens(telegram_id, include_all_storefronts, main_only=False):
         return [(2, "storefront-token"), (None, "main-token")]
 
     async def _no_sleep(delay):
@@ -302,7 +304,7 @@ async def test_send_to_user_prefers_own_storefront_then_main(monkeypatch):
 async def test_send_to_user_reports_only_forbidden(monkeypatch):
     from aiogram.exceptions import TelegramForbiddenError
 
-    async def _fake_tokens(telegram_id, include_all_storefronts):
+    async def _fake_tokens(telegram_id, include_all_storefronts, main_only=False):
         return [(None, "main-token")]
 
     monkeypatch.setattr("services.multibot.MultibotService._get_delivery_tokens", _fake_tokens)
@@ -367,7 +369,7 @@ async def test_announcement_service_counts_multibot_successes(monkeypatch):
     async def _fake_create_announcement_message(announcement_type, session, language):
         return ["chunk-1", "chunk-2"]
 
-    async def _fake_send_message_to_user_verbose(text, telegram_id, reply_markup=None, redis_client=None):
+    async def _fake_send_message_to_user_verbose(text, telegram_id, reply_markup=None, redis_client=None, main_only=False):
         return 2, False
 
     async def _fake_edit_message(message, source_message_id, chat_id):
@@ -411,7 +413,7 @@ async def test_announcement_service_marks_user_inactive_when_all_multibot_attemp
     async def _fake_create_announcement_message(announcement_type, session, language):
         return ["chunk-1", "chunk-2"]
 
-    async def _fake_send_message_to_user_verbose(text, telegram_id, reply_markup=None, redis_client=None):
+    async def _fake_send_message_to_user_verbose(text, telegram_id, reply_markup=None, redis_client=None, main_only=False):
         return 0, True
 
     async def _fake_update(user_dto, session):
@@ -460,7 +462,7 @@ async def test_announcement_service_marks_restocking_not_new_once(monkeypatch):
     async def _fake_create_announcement_message(announcement_type, session, language):
         return ["chunk-1"]
 
-    async def _fake_send_message_to_user_verbose(text, telegram_id, reply_markup=None, redis_client=None):
+    async def _fake_send_message_to_user_verbose(text, telegram_id, reply_markup=None, redis_client=None, main_only=False):
         return 1, False
 
     async def _fake_set_not_new(session):

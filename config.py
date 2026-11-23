@@ -1,3 +1,4 @@
+import secrets
 import os
 
 from dotenv import load_dotenv
@@ -43,7 +44,8 @@ CURRENCY = Currency(os.environ.get("CURRENCY", "USD"))
 KRYPTO_EXPRESS_API_KEY = os.environ.get("KRYPTO_EXPRESS_API_KEY")
 KRYPTO_EXPRESS_API_URL = os.environ.get("KRYPTO_EXPRESS_API_URL")
 KRYPTO_EXPRESS_API_SECRET = os.environ.get("KRYPTO_EXPRESS_API_SECRET")
-WEBHOOK_SECRET_TOKEN = os.environ.get("WEBHOOK_SECRET_TOKEN")
+# Random per start when not set, so the main webhook is never open without a secret.
+WEBHOOK_SECRET_TOKEN = os.environ.get("WEBHOOK_SECRET_TOKEN") or secrets.token_hex(32)
 REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD")
 TELEGRAM_PROXY_URL = os.environ.get("TELEGRAM_PROXY_URL")

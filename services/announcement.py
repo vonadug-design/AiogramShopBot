@@ -25,13 +25,15 @@ class AnnouncementService:
     @staticmethod
     async def _send_generated_announcement_to_user(callback: CallbackQuery,
                                                    telegram_id: int,
-                                                   messages: list[str]) -> tuple[bool, bool]:
+                                                   messages: list[str],
+                                                   main_only: bool = False) -> tuple[bool, bool]:
         if config.MULTIBOT:
             had_only_forbidden_errors = False
             for message_text in messages:
                 sent_count, chunk_had_only_forbidden_errors = await MultibotService.send_message_to_user_verbose(
                     text=message_text,
-                    telegram_id=telegram_id
+                    telegram_id=telegram_id,
+                    main_only=main_only
                 )
                 if sent_count == 0:
                     return False, chunk_had_only_forbidden_errors
@@ -84,6 +86,7 @@ class AnnouncementService:
             AnnouncementType.RESTOCKING,
             AnnouncementType.CURRENT_STOCK
         )
+        content = MultibotService.extract_content(callback.message) if config.MULTIBOT else None
         if is_generated_announcement:
             generated_messages = await ItemService.create_announcement_message(
                 callback_data.announcement_type,
@@ -96,7 +99,8 @@ class AnnouncementService:
                     is_sent, had_only_forbidden_errors = await AnnouncementService._send_generated_announcement_to_user(
                         callback,
                         user.telegram_id,
-                        generated_messages
+                        generated_messages,
+                        getattr(callback_data, "via_main", False)
                     )
                     if is_sent:
                         counter += 1
@@ -104,10 +108,8 @@ class AnnouncementService:
                         user.can_receive_messages = False
                         await UserRepository.update(user, session)
                 elif config.MULTIBOT:
-                    sent_count, had_only_forbidden_errors = await MultibotService.copy_message_to_user(
-                        from_chat_id=callback.message.chat.id,
-                        message_id=callback.message.message_id,
-                        telegram_id=user.telegram_id
+                    sent_count, had_only_forbidden_errors = await MultibotService.send_content_to_user(
+                        content, user.telegram_id, getattr(callback_data, "via_main", False)
                     )
                     if sent_count > 0:
                         counter += 1

@@ -19,6 +19,7 @@ class Permission(str, Enum):
     BUYS = "buys"
     REVIEWS = "reviews"
     STOREFRONTS = "storefronts"
+    TEXTS = "texts"
     STAFF = "staff"
 
 

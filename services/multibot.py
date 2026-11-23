@@ -210,8 +210,11 @@ class MultibotService:
                     await bot.session.close()
 
     @staticmethod
-    async def _get_delivery_tokens(telegram_id: int, include_all_storefronts: bool) -> list[tuple[int | None, str]]:
+    async def _get_delivery_tokens(telegram_id: int, include_all_storefronts: bool,
+                                   main_only: bool = False) -> list[tuple[int | None, str]]:
         """Bots to try for a customer, best first: their own storefront, (other storefronts), main bot."""
+        if main_only:
+            return [(None, config.TOKEN)]
         async with get_db_session() as session:
             own = await StorefrontBotRepository.get_user_storefront(telegram_id, session)
             tokens = []
@@ -226,10 +229,10 @@ class MultibotService:
 
     @staticmethod
     async def _deliver(telegram_id: int, include_all_storefronts: bool,
-                       send: Callable[[Bot], Awaitable[object]]) -> tuple[int, bool]:
+                       send: Callable[[Bot], Awaitable[object]], main_only: bool = False) -> tuple[int, bool]:
         """Tries bots one by one until one delivers. Returns (success_count, had_only_forbidden_errors)."""
         had_only_forbidden_errors = True
-        tokens = await MultibotService._get_delivery_tokens(telegram_id, include_all_storefronts)
+        tokens = await MultibotService._get_delivery_tokens(telegram_id, include_all_storefronts, main_only)
         for index, (storefront_id, token) in enumerate(tokens):
             bot = MultibotService.build_bot(token)
             try:
@@ -256,11 +259,40 @@ class MultibotService:
     @staticmethod
     async def send_message_to_user_verbose(text: str,
                                            telegram_id: int,
-                                           reply_markup=None) -> tuple[int, bool]:
+                                           reply_markup=None,
+                                           main_only: bool = False) -> tuple[int, bool]:
         return await MultibotService._deliver(
             telegram_id, False,
-            lambda bot: bot.send_message(telegram_id, text, reply_markup=reply_markup)
+            lambda bot: bot.send_message(telegram_id, text, reply_markup=reply_markup),
+            main_only
         )
+
+    @staticmethod
+    def extract_content(message) -> dict:
+        """What to re-send of an admin's message. Copying by message id only works inside one bot's chat,
+        so broadcasts through other bots send the content itself (file ids are relayed between bots)."""
+        for kind in ("photo", "video", "animation", "document"):
+            media = getattr(message, kind, None)
+            if media:
+                file_id = media[-1].file_id if kind == "photo" else media.file_id
+                return {"kind": kind, "file_id": file_id, "text": message.html_text if message.caption else None}
+        return {"kind": "text", "text": message.html_text}
+
+    @staticmethod
+    async def send_content_to_user(content: dict, telegram_id: int, main_only: bool = False) -> tuple[int, bool]:
+        async def send(bot: Bot):
+            match content["kind"]:
+                case "photo":
+                    return await bot.send_photo(telegram_id, content["file_id"], caption=content["text"])
+                case "video":
+                    return await bot.send_video(telegram_id, content["file_id"], caption=content["text"])
+                case "animation":
+                    return await bot.send_animation(telegram_id, content["file_id"], caption=content["text"])
+                case "document":
+                    return await bot.send_document(telegram_id, content["file_id"], caption=content["text"])
+                case _:
+                    return await bot.send_message(telegram_id, content["text"])
+        return await MultibotService._deliver(telegram_id, False, send, main_only)
 
     @staticmethod
     async def send_message_to_user(text: str,

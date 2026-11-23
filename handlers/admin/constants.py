@@ -1,3 +1,4 @@
+import config
 from aiogram.types import InlineKeyboardButton
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -19,9 +20,19 @@ class AnnouncementsConstants:
     @staticmethod
     def get_confirmation_builder(announcement_type: AnnouncementType, language: Language) -> InlineKeyboardBuilder:
         kb_builder = InlineKeyboardBuilder()
-        kb_builder.button(text=get_text(language, BotEntity.COMMON, "confirm"),
-                          callback_data=AnnouncementCallback.create(level=3,
-                                                                    announcement_type=announcement_type))
+        if config.MULTIBOT:
+            kb_builder.button(text=get_text(language, BotEntity.ADMIN, "announcement_via_storefronts"),
+                              callback_data=AnnouncementCallback.create(level=3,
+                                                                        announcement_type=announcement_type))
+            kb_builder.button(text=get_text(language, BotEntity.ADMIN, "announcement_via_main"),
+                              callback_data=AnnouncementCallback.create(level=3,
+                                                                        announcement_type=announcement_type,
+                                                                        via_main=True))
+            kb_builder.adjust(1)
+        else:
+            kb_builder.button(text=get_text(language, BotEntity.COMMON, "confirm"),
+                              callback_data=AnnouncementCallback.create(level=3,
+                                                                        announcement_type=announcement_type))
         kb_builder.button(text=get_text(language, BotEntity.COMMON, "cancel"),
                           callback_data=AnnouncementCallback.create(level=0))
         return kb_builder
@@ -50,6 +61,10 @@ class UserManagementStates(StatesGroup):
 
 class WalletStates(StatesGroup):
     crypto_address = State()
+
+
+class TextsStates(StatesGroup):
+    value = State()
 
 
 class MediaManagementStates(StatesGroup):
