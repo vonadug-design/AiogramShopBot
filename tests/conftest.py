@@ -93,6 +93,7 @@ pyngrok_module.ngrok = SimpleNamespace(
     set_auth_token=lambda token: None,
     connect=lambda *args, **kwargs: SimpleNamespace(public_url="https://example.ngrok"),
 )
+pyngrok_module.conf = SimpleNamespace(get_default=lambda: SimpleNamespace(auth_token=None))
 sys.modules.setdefault("pyngrok", pyngrok_module)
 
 redis_module = ModuleType("redis")
