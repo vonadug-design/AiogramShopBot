@@ -1,4 +1,5 @@
 from aiogram.fsm.context import FSMContext
+from services.photo_stock import PhotoStockService
 from aiogram.types import Message, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,6 +69,7 @@ class InventoryManagementService:
             case AddType.TXT:
                 return get_text(language, BotEntity.ADMIN, "add_items_txt_msg"), kb_markup
             case AddType.MENU:
+                await PhotoStockService.clear(state.key.user_id)
                 await state.set_state(InventoryManagementStates.item_type)
                 return get_text(language, BotEntity.ADMIN, "add_items_item_type"), kb_markup
 
@@ -158,6 +160,13 @@ class InventoryManagementService:
                     msg = success_msg
                 else:
                     msg = get_text(language, BotEntity.ADMIN, "add_items_private_data_physical")
+            elif PhotoStockService.is_done_word(message.text):
+                if await PhotoStockService.count(message.from_user.id) > 0:
+                    await state.update_data(private_data="")
+                    await state.set_state(InventoryManagementStates.price)
+                    msg = success_msg
+                else:
+                    msg = get_text(language, BotEntity.ADMIN, "add_items_private_data")
             else:
                 await state.update_data(private_data=message.html_text)
                 await state.set_state(InventoryManagementStates.price)
@@ -185,7 +194,15 @@ class InventoryManagementService:
                                           description=state_data['description'],
                                           price=float(state_data['price']),
                                           private_data=private_data) for private_data in
-                                  state_data['private_data'].split('\n')]
+                                  state_data['private_data'].split('\n') if private_data.strip()]
+                    items_list += [ItemDTO(item_type=item_type,
+                                           category_id=category.id,
+                                           subcategory_id=subcategory.id,
+                                           description=state_data['description'],
+                                           price=float(state_data['price']),
+                                           private_data=photo_item['private_data'],
+                                           photo_id=photo_item['photo_id'])
+                                   for photo_item in await PhotoStockService.pop_all(message.from_user.id)]
                 await ItemRepository.add_many(items_list, session)
                 await session_commit(session)
                 await state.clear()

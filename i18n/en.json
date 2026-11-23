@@ -15,7 +15,7 @@
     "add_items_category": "🗂️ <b>Please send category name or \"<code>cancel</code>\":</b>\nExample: <code>Category#1</code>",
     "add_items_description": "✍️ <b>Please send description or \"<code>cancel</code>\":</b>\nExample: <code>Description#1</code>",
     "add_items_price": "💵 <b>Please send price in {currency_text} or \"<code>cancel</code>\":</b>\nExample: <code>50.0</code>",
-    "add_items_private_data": "ℹ️ <b>Please send the data that the user will receive after purchase.</b>\n\n<u>Note</u>:\nIf you enter one line, you will add one product, if you enter multiple lines, you will add multiple products.\n1 line=1 item\n10 rows=10 items.\n\nIf you want to abort adding items enter \"<code>cancel</code>\".",
+    "add_items_private_data": "ℹ️ <b>Please send the data that the user will receive after purchase.</b>\n\n<u>Note</u>:\nIf you enter one line, you will add one product, if you enter multiple lines, you will add multiple products.\n1 line=1 item\n10 rows=10 items.\n\nTo sell items with an individual photo, send photos instead: one photo with the key as its caption = one item (albums work), then send <code>done</code>.\n\nIf you want to abort adding items enter \"<code>cancel</code>\".",
     "menu": "\uD83D\uDD11 Admin Menu",
     "announcements": "📢 Announcements",
     "back_to_menu": "⤵\uFE0F Back to admin menu",
@@ -56,6 +56,8 @@
     "multibot_invalid_token": "❌ Invalid bot token. Use /add {token}.",
     "multibot_main_token_not_allowed": "⚠️ The main bot token cannot be added as a child bot.",
     "multibot_bot_already_added": "ℹ️ This bot is already connected.",
+    "add_items_photo_needs_caption": "⚠️ Add the key (the text the buyer receives) as the photo caption and send it again.",
+    "add_items_photo_received": "📸 Accepted. Units with a photo: {count}. Send more photos, or send <code>done</code> to enter the price.",
     "multibot_bot_added": "✅ Bot @{bot_username} connected successfully.",
     "multibot_no_bots": "ℹ️ No storefront bots yet. Add one with /add {token}.",
     "multibot_bots_header": "🤖 <b>Storefront bots</b> (id · bot · status · customers/capacity):",
@@ -306,6 +308,8 @@
     "usdc_bep20_top_up": "USDC BEP-20"
   },
   "user": {
+    "out_of_stock_race": "⚠️ Someone has just bought the last units of an item in your cart. Nothing was charged, please check your cart again.",
+    "delivered_item": "📦 Item #{count}\n<code>{private_data}</code>",
     "storefront_open_button": "🛍 Open the shop",
     "storefront_your_link": "👋 Your personal shop is @{bot_username}. Tap the button below to open it.\n\nKeep this chat: if the shop link ever changes, the new one will arrive here.",
     "storefront_none_available": "⏳ The shop is temporarily unavailable. We will send you a link here as soon as it is ready.",

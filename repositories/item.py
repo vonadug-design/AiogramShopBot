@@ -65,8 +65,9 @@ class ItemRepository:
                        Item.category_id == category_id,
                        Item.subcategory_id == subcategory_id,
                        Item.is_sold == False)
+                .order_by(Item.id)
                 .limit(quantity)
-                .with_for_update())
+                .with_for_update(skip_locked=True))
         items = await session_execute(stmt, session)
         return [ItemDTO.model_validate(item, from_attributes=True) for item in items.scalars().all()]
 

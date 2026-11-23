@@ -1,4 +1,5 @@
 from aiogram.fsm.context import FSMContext
+from services.delivery import DeliveryService
 from aiogram.types import CallbackQuery, InputMediaPhoto, InputMediaVideo, InputMediaAnimation, Message, \
     InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -349,11 +350,18 @@ class CartService:
                              shipping_option_id=shipping_option.id if shipping_option else None,
                              status=BuyStatus.PAID if shipping_option else BuyStatus.COMPLETED)
             buy_dto = await BuyRepository.create(buy_dto, session)
+            delivered_items = []
             for cart_item in cart_items:
                 purchased_items = await ItemRepository.get_purchased_items(cart_item.item_type,
                                                                            cart_item.category_id,
                                                                            cart_item.subcategory_id, cart_item.quantity,
                                                                            session)
+                if len(purchased_items) < cart_item.quantity:
+                    # A parallel purchase took the last units: sell nothing rather than a partial order
+                    await session.rollback()
+                    kb_builder.row(callback_data.get_back_button(language, 0))
+                    return get_text(language, BotEntity.USER, "out_of_stock_race"), kb_builder
+                delivered_items.extend(purchased_items)
                 item_ids = [item.id for item in purchased_items]
                 buy_item_dto = BuyItemDTO(buy_id=buy_dto.id, item_ids=item_ids)
                 await BuyItemRepository.create_single(buy_item_dto, session)
@@ -373,6 +381,7 @@ class CartService:
             user.consume_records = user.consume_records + cart_total_price
             await UserRepository.update(user, session)
             await session_commit(session)
+            await DeliveryService.deliver(callback.bot, callback.from_user.id, delivered_items, language)
             await NotificationService.new_buy(buy_dto, user, session)
             return msg, kb_builder
         elif callback_data.confirmation is False:

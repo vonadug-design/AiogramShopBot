@@ -11,6 +11,9 @@ from services.admin import AdminService
 from services.inventory_management import InventoryManagementService
 from services.item import ItemService
 from services.notification import NotificationService
+from services.photo_stock import PhotoStockService
+from enums.bot_entity import BotEntity
+from utils.utils import get_text
 from utils.custom_filters import AdminIdFilter
 
 inventory_management = Router()
@@ -97,6 +100,18 @@ async def add_items_menu(message: Message, state: FSMContext, session: AsyncSess
     msg, kb_builder = await InventoryManagementService.add_item_menu(message, state, session, language)
     message = await message.answer(text=msg, reply_markup=kb_builder.as_markup())
     await state.update_data(msg_id=message.message_id, chat_id=message.chat.id)
+
+
+@inventory_management.message(AdminIdFilter(), F.photo, StateFilter(InventoryManagementStates.private_data))
+async def add_photo_item(message: Message, state: FSMContext, language: Language):
+    """One photo with the key in its caption = one unit of stock. Albums work too."""
+    if not message.caption or not message.caption.strip():
+        await message.answer(get_text(language, BotEntity.ADMIN, "add_items_photo_needs_caption"))
+        return
+    count = await PhotoStockService.add(message.from_user.id,
+                                        PhotoStockService.media_id_from_message(message),
+                                        message.caption.strip())
+    await message.answer(get_text(language, BotEntity.ADMIN, "add_items_photo_received").format(count=count))
 
 
 @inventory_management.message(AdminIdFilter(), F.text, StateFilter(InventoryManagementStates.filter_entity))
