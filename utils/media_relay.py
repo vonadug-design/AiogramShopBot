@@ -112,7 +112,8 @@ class MediaRelayMiddleware(BaseRequestMiddleware):
                 raise
             setattr(holder, attribute, BufferedInputFile(content, filename=filename))
             response = await make_request(bot, method)
-            new_file_id = self._extract_file_id(response.result)
+            # make_request returns the Message itself (older aiogram wrapped it in Response.result)
+            new_file_id = self._extract_file_id(getattr(response, "result", response))
             if new_file_id:
                 await self.redis.hset(self._cache_key(bot), original, new_file_id)
             return response

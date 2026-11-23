@@ -125,7 +125,8 @@ async def edit_language(**kwargs):
     callback: CallbackQuery = kwargs.get("callback")
     session: AsyncSession = kwargs.get("session")
     callback_data: MyProfileCallback = kwargs.get("callback_data")
-    msg, kb_builder = await UserService.edit_language(callback.from_user.id, callback_data, session)
+    msg, kb_builder = await UserService.edit_language(callback.from_user.id, callback_data, session,
+                                                      kwargs.get("language") or Language.EN)
     await callback.message.edit_caption(caption=msg, reply_markup=kb_builder.as_markup())
 
 

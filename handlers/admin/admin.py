@@ -116,8 +116,11 @@ async def staff_command(message: Message, command: CommandObject, session: Async
             return await message.answer(get_text(language, BotEntity.ADMIN, "staff_owner_fixed"))
         role = _ROLE_WORDS[args[1].lower()]
         await StaffService.set_role(telegram_id, role, session)
+        if role is None:
+            return await message.answer(get_text(language, BotEntity.ADMIN, "staff_removed").format(
+                telegram_id=telegram_id))
         return await message.answer(get_text(language, BotEntity.ADMIN, "staff_updated").format(
-            telegram_id=telegram_id, role=role.value if role else "—"))
+            telegram_id=telegram_id, role=role.value))
     if args:
         return await message.answer(get_text(language, BotEntity.ADMIN, "staff_usage"))
     lines = [get_text(language, BotEntity.ADMIN, "staff_header")]

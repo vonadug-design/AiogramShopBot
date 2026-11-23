@@ -50,9 +50,10 @@ def _open_shop_markup(storefront: StorefrontBot, language: Language):
 
 
 @main_router_multibot.message(AdminIdFilter(Permission.STOREFRONTS), Command("add"))
-async def command_add_bot(message: Message, command: CommandObject, session: AsyncSession) -> Any:
+async def command_add_bot(message: Message, command: CommandObject, session: AsyncSession,
+                          language: Language = Language.EN) -> Any:
     if not command.args or not is_bot_token(command.args.strip()):
-        return await message.answer(get_text(Language.EN, BotEntity.ADMIN, "multibot_invalid_token"))
+        return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_invalid_token"))
     token = command.args.strip()
     try:
         await message.delete()  # do not leave the token in the chat history
@@ -61,27 +62,27 @@ async def command_add_bot(message: Message, command: CommandObject, session: Asy
     result, storefront = await MultibotService.add_bot(token, OTHER_BOTS_URL, session)
     match result:
         case AddBotResult.MAIN_TOKEN:
-            return await message.answer(get_text(Language.EN, BotEntity.ADMIN, "multibot_main_token_not_allowed"))
+            return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_main_token_not_allowed"))
         case AddBotResult.DUPLICATE:
-            return await message.answer(get_text(Language.EN, BotEntity.ADMIN, "multibot_bot_already_added"))
+            return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_bot_already_added"))
         case AddBotResult.INVALID:
-            return await message.answer(get_text(Language.EN, BotEntity.ADMIN, "multibot_invalid_token"))
+            return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_invalid_token"))
     storefront_bot_cache.forget(storefront.id)
     return await message.answer(
-        get_text(Language.EN, BotEntity.ADMIN, "multibot_bot_added").format(bot_username=storefront.username)
+        get_text(language, BotEntity.ADMIN, "multibot_bot_added").format(bot_username=storefront.username)
     )
 
 
 @main_router_multibot.message(AdminIdFilter(Permission.STOREFRONTS), Command("bots"))
-async def command_list_bots(message: Message, session: AsyncSession) -> Any:
+async def command_list_bots(message: Message, session: AsyncSession, language: Language = Language.EN) -> Any:
     storefronts = await StorefrontBotRepository.get_all(session)
     if not storefronts:
-        return await message.answer(get_text(Language.EN, BotEntity.ADMIN, "multibot_no_bots"))
+        return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_no_bots"))
     counts = await StorefrontBotRepository.get_user_counts(session)
-    lines = [get_text(Language.EN, BotEntity.ADMIN, "multibot_bots_header")]
+    lines = [get_text(language, BotEntity.ADMIN, "multibot_bots_header")]
     for storefront in storefronts:
         capacity = storefront.max_users or config.STOREFRONT_MAX_USERS
-        lines.append(get_text(Language.EN, BotEntity.ADMIN, "multibot_bot_line").format(
+        lines.append(get_text(language, BotEntity.ADMIN, "multibot_bot_line").format(
             id=storefront.id,
             bot_username=storefront.username,
             status=storefront.status.value,
@@ -92,33 +93,34 @@ async def command_list_bots(message: Message, session: AsyncSession) -> Any:
 
 
 @main_router_multibot.message(AdminIdFilter(Permission.STOREFRONTS), Command("ban"))
-async def command_ban_bot(message: Message, command: CommandObject, session: AsyncSession, bot: Bot) -> Any:
+async def command_ban_bot(message: Message, command: CommandObject, session: AsyncSession, bot: Bot,
+                          language: Language = Language.EN) -> Any:
     """/ban <id>: the storefront was banned, move its customers and send them new links via the main bot."""
     if not command.args or not command.args.strip().isdigit():
-        return await message.answer(get_text(Language.EN, BotEntity.ADMIN, "multibot_ban_usage"))
+        return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_ban_usage"))
     storefront_id = int(command.args.strip())
     storefront = await StorefrontBotRepository.get_by_id(storefront_id, session)
     if storefront is None:
-        return await message.answer(get_text(Language.EN, BotEntity.ADMIN, "multibot_bot_not_found"))
+        return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_bot_not_found"))
     if storefront.status == StorefrontStatus.BANNED:
-        return await message.answer(get_text(Language.EN, BotEntity.ADMIN, "multibot_bot_already_banned"))
+        return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_bot_already_banned"))
     banned_username = storefront.username
     relocations = await MultibotService.ban_and_relocate(storefront_id, session)
     storefront_bot_cache.forget(storefront_id)
     moved = sum(1 for relocation in relocations if relocation.storefront is not None)
-    await message.answer(get_text(Language.EN, BotEntity.ADMIN, "multibot_ban_started").format(
+    await message.answer(get_text(language, BotEntity.ADMIN, "multibot_ban_started").format(
         bot_username=banned_username, total=len(relocations), moved=moved
     ))
     languages = await MultibotService.get_languages([relocation.telegram_id for relocation in relocations], session)
 
     def build_message(relocation: Relocation):
-        language = languages.get(relocation.telegram_id, Language.EN)
-        return (get_text(language, BotEntity.USER, "storefront_moved").format(
+        customer_language = languages.get(relocation.telegram_id, Language.EN)
+        return (get_text(customer_language, BotEntity.USER, "storefront_moved").format(
             bot_username=relocation.storefront.username),
-                _open_shop_markup(relocation.storefront, language))
+                _open_shop_markup(relocation.storefront, customer_language))
 
     notified = await MultibotService.notify_relocations(bot, relocations, build_message)
-    return await message.answer(get_text(Language.EN, BotEntity.ADMIN, "multibot_ban_finished").format(
+    return await message.answer(get_text(language, BotEntity.ADMIN, "multibot_ban_finished").format(
         notified=notified, moved=moved, unplaced=len(relocations) - moved
     ))
 
