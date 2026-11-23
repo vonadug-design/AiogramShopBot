@@ -163,3 +163,15 @@ def test_review_request_skipped_when_already_reviewed(monkeypatch):
 
     assert run(module.ReviewRequestService.send_due(send)) == 0
     assert buy.review_requests == 2
+
+
+def test_new_callbacks_survive_pack_and_unpack():
+    from callbacks import CatalogCallback, LinkButtonsCallback, ApironeCallback, TopUpAmountCallback, \
+        ReviewRequestCallback
+    for callback in (CatalogCallback.create(0), CatalogCallback.create(2, 5, language=Language.RU, action="clear"),
+                     LinkButtonsCallback.create(0), LinkButtonsCallback.create(1, 3, action="up"),
+                     ApironeCallback(currency="usdt@trx"), ApironeCallback(currency="usdt@trx", amount="12.50"),
+                     TopUpAmountCallback(amount="5.00"), ReviewRequestCallback(buy_item_id=7, rating=5)):
+        unpacked = type(callback).unpack(callback.pack())
+        assert (unpacked.model_dump().get("action") or "") == (callback.model_dump().get("action") or "")
+        assert (unpacked.model_dump().get("amount") or "") == (callback.model_dump().get("amount") or "")
