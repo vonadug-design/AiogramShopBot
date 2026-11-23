@@ -22,6 +22,21 @@ from utils.utils import get_bot_photo_id
 class SubcategoryService:
 
     @staticmethod
+    async def _get_back_button(callback_data: AllCategoriesCallback, session: AsyncSession, language: Language):
+        """Back from a product list goes to the level that holds this category."""
+        parent_id = None
+        if callback_data.category_id is not None:
+            category = await CategoryRepository.get_by_id(callback_data.category_id, session)
+            parent_id = category.parent_id
+            if await CategoryRepository.has_own_items(callback_data.category_id, callback_data.item_type, session) \
+                    and await CategoryRepository.has_visible_children(callback_data.category_id,
+                                                                      callback_data.item_type, session):
+                # We came here from the "products in this category" button.
+                parent_id = callback_data.category_id
+        return AllCategoriesCallback.create(level=1, item_type=callback_data.item_type,
+                                            category_id=parent_id).get_back_button(language, 1)
+
+    @staticmethod
     async def get_buttons(callback_data: AllCategoriesCallback | None,
                           state: FSMContext,
                           session: AsyncSession,
@@ -60,7 +75,9 @@ class SubcategoryService:
         kb_builder = await add_pagination_buttons(kb_builder, callback_data,
                                                   SubcategoryRepository.get_maximum_page(callback_data.category_id,
                                                                                          filters, session),
-                                                  callback_data.get_back_button(language), language)
+                                                  await SubcategoryService._get_back_button(callback_data, session,
+                                                                                            language),
+                                                  language)
         caption = get_text(language, BotEntity.USER, "pick_subcategory")
         if callback_data.item_type:
             item_type = callback_data.item_type.get_localized(language)

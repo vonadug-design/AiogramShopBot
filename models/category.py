@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from sqladmin import ModelView
-from sqlalchemy import Integer, Column, String
+from sqlalchemy import Integer, Column, String, ForeignKey
 from sqlalchemy.orm import relationship
 
 from models.base import Base
@@ -10,7 +10,9 @@ class Category(Base):
     __tablename__ = 'categories'
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False, unique=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    # Categories form a tree of any depth; items live in any category of it (usually a leaf).
+    parent_id = Column(Integer, ForeignKey('categories.id', ondelete='SET NULL'), nullable=True, index=True)
     media_id = Column(String, nullable=False)
     items = relationship("Item", back_populates="category")
     cart_items = relationship("CartItem", back_populates="category")
@@ -23,6 +25,7 @@ class CategoryDTO(BaseModel):
     id: int | None = None
     name: str | None = None
     media_id: str | None = None
+    parent_id: int | None = None
 
 
 class CategoryAdmin(ModelView, model=Category):
