@@ -67,6 +67,16 @@ class TextsStates(StatesGroup):
     value = State()
 
 
+class CatalogStates(StatesGroup):
+    description = State()
+
+
+class LinkButtonsStates(StatesGroup):
+    text = State()
+    url = State()
+    support_link = State()
+
+
 class MediaManagementStates(StatesGroup):
     media = State()
     filter_entity = State()

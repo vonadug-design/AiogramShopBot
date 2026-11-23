@@ -29,6 +29,9 @@ class Buy(Base):
     track_number = Column(String, nullable=True)
     shipping_option_id = Column(Integer, ForeignKey('shipping_options.id'), nullable=True)
     shipping_option = relationship("ShippingOption", back_populates="buys")
+    # How many times the buyer was asked for a review (1 hour after the purchase, then once more a day later).
+    review_requests = Column(Integer, nullable=False, default=0, server_default='0')
+    review_requested_at = Column(DateTime(timezone=True), nullable=True)
     buy_items = relationship(
         "BuyItem",
         back_populates="buy",

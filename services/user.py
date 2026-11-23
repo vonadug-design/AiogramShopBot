@@ -61,6 +61,19 @@ class UserService:
                 await session_commit(session)
 
     @staticmethod
+    async def get_balance(telegram_id: int, session: AsyncSession | Session) -> float:
+        user = await UserRepository.get_by_tgid(telegram_id, session)
+        if user is None:
+            return 0.0
+        return round(user.top_up_amount - user.consume_records, 2)
+
+    @staticmethod
+    async def get_balance_line(telegram_id: int, session: AsyncSession | Session, language: Language) -> str:
+        return get_text(language, BotEntity.USER, "balance_line").format(
+            balance=await UserService.get_balance(telegram_id, session),
+            currency_sym=config.CURRENCY.get_localized_symbol())
+
+    @staticmethod
     async def get(user_dto: UserDTO, session: AsyncSession | Session) -> User | None:
         return await UserRepository.get_by_tgid(user_dto.telegram_id, session)
 
@@ -73,8 +86,6 @@ class UserService:
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text=get_text(language, BotEntity.USER, "top_up_balance_button"),
                           callback_data=MyProfileCallback.create(level=1))
-        kb_builder.button(text=get_text(language, BotEntity.USER, "purchase_history_button"),
-                          callback_data=MyProfileCallback.create(level=3))
         kb_builder.button(text=get_text(language, BotEntity.USER, "referral_button"),
                           callback_data=MyProfileCallback.create(level=7))
         kb_builder.button(text=get_text(language, BotEntity.USER, "language"),
@@ -132,7 +143,8 @@ class UserService:
         else:
             user = await UserRepository.get_by_tgid(telegram_id, session)
             user_id = user.id
-            back_button = callback_data.get_back_button(language, 0)
+            # "My purchases" is a main menu button now, so the list has nothing to go back to.
+            back_button = None
         sort_pairs, _ = await get_filters_settings(state, callback_data)
         buys = await BuyRepository.get_by_buyer_id(sort_pairs, user_id, callback_data.page, session)
         kb_builder = InlineKeyboardBuilder()
@@ -153,9 +165,9 @@ class UserService:
         kb_builder = await add_pagination_buttons(kb_builder, callback_data,
                                                   BuyRepository.get_max_page_purchase_history(user_id, session),
                                                   back_button, language)
-        if len(kb_builder.as_markup().inline_keyboard) > 1 and callback_data.user_role == UserRole.USER:
+        if len(buys) > 0 and callback_data.user_role == UserRole.USER:
             caption = get_text(language, BotEntity.USER, "purchases")
-        elif len(kb_builder.as_markup().inline_keyboard) > 1 and callback_data.user_role == UserRole.ADMIN:
+        elif len(buys) > 0 and callback_data.user_role == UserRole.ADMIN:
             caption = get_text(language, BotEntity.ADMIN, "pick_purchase")
         else:
             caption = get_text(language, BotEntity.USER, "no_purchases")

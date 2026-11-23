@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqladmin import ModelView
 from sqlalchemy import Integer, Column, String, SmallInteger, DateTime, CheckConstraint, ForeignKey
 from sqlalchemy.orm import relationship
@@ -37,7 +37,7 @@ class ReviewDTO(BaseModel):
     text: str | None = None
     image_id: str | None = None
     rating: int
-    create_datetime: datetime | None = datetime.now(tz=timezone.utc)
+    create_datetime: datetime | None = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 class ReviewAdmin(ModelView, model=Review):

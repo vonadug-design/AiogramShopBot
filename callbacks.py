@@ -147,6 +147,36 @@ class TextsCallback(BaseCallback, prefix="texts"):
         return TextsCallback(level=level, item=item, language=language, reset=reset, page=page)
 
 
+class CatalogCallback(BaseCallback, prefix="catalog"):
+    """Admin menu -> Catalog: the category tree with photos, descriptions, order and restocking."""
+    category_id: int | None = None
+    subcategory_id: int | None = None
+    action: str = ""
+    language: Language | None = None
+
+    @staticmethod
+    def create(level: int, category_id: int | None = None, subcategory_id: int | None = None, action: str = "",
+               language: Language | None = None, page: int = 0):
+        return CatalogCallback(level=level, category_id=category_id, subcategory_id=subcategory_id, action=action,
+                               language=language, page=page)
+
+
+class LinkButtonsCallback(BaseCallback, prefix="links"):
+    """Admin menu -> Buttons: link buttons under the welcome messages and the support link."""
+    button_id: int | None = None
+    action: str = ""
+
+    @staticmethod
+    def create(level: int, button_id: int | None = None, action: str = "", page: int = 0):
+        return LinkButtonsCallback(level=level, button_id=button_id, action=action, page=page)
+
+
+class ReviewRequestCallback(CallbackData, prefix="rate"):
+    """One-tap rating under the review request sent after a purchase."""
+    buy_item_id: int
+    rating: int
+
+
 class AnnouncementCallback(BaseCallback, prefix="announcement"):
     announcement_type: AnnouncementType | None
     via_main: bool = False  # multibot: send only through the main bot
@@ -334,3 +364,9 @@ class ReviewManagementCallback(BaseCallback, prefix="reviews"):
 
 class ApironeCallback(CallbackData, prefix="apirone"):
     currency: str
+    amount: str = ""  # set when the amount is already known (the "Top up by X" button)
+
+
+class TopUpAmountCallback(CallbackData, prefix="topup"):
+    """"Top up by X" on a product the buyer can't afford yet: X is the missing amount."""
+    amount: str

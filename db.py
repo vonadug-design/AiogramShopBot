@@ -31,6 +31,7 @@ from models.storefront_bot import StorefrontBot
 from models.apirone_invoice import ApironeInvoice
 from models.staff_member import StaffMember
 from models.text_override import TextOverride
+from models.custom_button import CustomButton
 
 url = f"postgresql+asyncpg://{config.DB_USER}:{config.DB_PASS}@{config.DB_HOST}:{config.DB_PORT}/{config.DB_NAME}"
 engine = create_async_engine(url, echo=True)
@@ -108,3 +109,27 @@ async def create_db_and_tables():
         else:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+    await ensure_new_columns()
+
+
+# Columns added after a database was first created. create_all() only adds missing tables, so an
+# existing database gets them here. Every statement is safe to run on each start.
+NEW_COLUMNS_SQL = [
+    "ALTER TABLE categories ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES categories(id) ON DELETE SET NULL",
+    "CREATE INDEX IF NOT EXISTS ix_categories_parent_id ON categories (parent_id)",
+    "ALTER TABLE categories ADD COLUMN IF NOT EXISTS position INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE categories ADD COLUMN IF NOT EXISTS descriptions JSON",
+    # Purchases made before review requests existed are not asked about (2 = both requests done).
+    "ALTER TABLE buys ADD COLUMN IF NOT EXISTS review_requests INTEGER NOT NULL DEFAULT 2",
+    "ALTER TABLE buys ALTER COLUMN review_requests SET DEFAULT 0",
+    "ALTER TABLE buys ADD COLUMN IF NOT EXISTS review_requested_at TIMESTAMP WITH TIME ZONE",
+    "ALTER TYPE keyboardbutton ADD VALUE IF NOT EXISTS 'MY_PURCHASES'",
+]
+
+
+async def ensure_new_columns():
+    if engine.dialect.name != "postgresql":
+        return
+    async with engine.begin() as conn:
+        for statement in NEW_COLUMNS_SQL:
+            await conn.execute(text(statement))

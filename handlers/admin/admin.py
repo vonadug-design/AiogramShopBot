@@ -4,7 +4,8 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from callbacks import AdminMenuCallback, AnnouncementCallback, InventoryManagementCallback, \
     UserManagementCallback, StatisticsCallback, WalletCallback, MediaManagementCallback, CouponManagementCallback, \
-    ShippingManagementCallback, MyProfileCallback, ReviewManagementCallback, TextsCallback
+    ShippingManagementCallback, MyProfileCallback, ReviewManagementCallback, TextsCallback, CatalogCallback, \
+    LinkButtonsCallback
 from enums.bot_entity import BotEntity
 from enums.keyboard_button import KeyboardButton as KB
 from enums.language import Language
@@ -19,6 +20,8 @@ from handlers.admin.statistics import statistics
 from handlers.admin.user_management import user_management
 from handlers.admin.wallet import wallet
 from handlers.admin.texts import texts_router
+from handlers.admin.catalog import catalog_router
+from handlers.admin.link_buttons import link_buttons_router
 from enums.staff_role import Permission, StaffRole
 from services.staff import StaffService
 from utils.custom_filters import AdminIdFilter
@@ -36,7 +39,9 @@ admin_router.include_routers(announcement_router,
                              coupons_management,
                              shipping_management,
                              buys_management_router,
-                             texts_router)
+                             texts_router,
+                             catalog_router,
+                             link_buttons_router)
 
 
 @admin_router.message(F.text.in_(KB.get_localized_set(KB.ADMIN_MENU)), AdminIdFilter())
@@ -53,6 +58,7 @@ async def admin(**kwargs):
     menu = [
         (Permission.ANNOUNCEMENTS, "announcements", AnnouncementCallback.create(level=0)),
         (Permission.INVENTORY, "inventory_management", InventoryManagementCallback.create(level=0)),
+        (Permission.INVENTORY, "catalog_management", CatalogCallback.create(level=0)),
         (Permission.USERS, "user_management", UserManagementCallback.create(level=0)),
         (Permission.STATISTICS, "statistics", StatisticsCallback.create(level=0)),
         (Permission.WALLET, "crypto_withdraw", WalletCallback.create(level=0)),
@@ -62,6 +68,7 @@ async def admin(**kwargs):
         (Permission.BUYS, "buys_management", MyProfileCallback.create(level=3, user_role=UserRole.ADMIN)),
         (Permission.REVIEWS, "reviews_management", ReviewManagementCallback.create(level=5, user_role=UserRole.ADMIN)),
         (Permission.TEXTS, "texts_management", TextsCallback.create(level=0)),
+        (Permission.TEXTS, "links_management", LinkButtonsCallback.create(level=0)),
     ]
     for permission, text_key, callback_data in menu:
         if await StaffService.can(message.from_user.id, permission):

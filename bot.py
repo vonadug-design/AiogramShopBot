@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import secrets
 import sys
@@ -36,6 +37,7 @@ from models.storefront_bot import StorefrontBotAdmin
 from models.apirone_invoice import ApironeInvoiceAdmin
 from models.staff_member import StaffMemberAdmin
 from models.text_override import TextOverrideAdmin
+from models.custom_button import CustomButtonAdmin
 from processing.processing import processing_router
 from processing.apirone import apirone_router
 from repositories.button_media import ButtonMediaRepository
@@ -59,6 +61,9 @@ if config.MULTIBOT:
     # Photos uploaded through one bot become usable in every storefront bot
     session.middleware(MediaRelayMiddleware(redis, config.MEDIA_CACHE_DIR, MultibotService.get_all_tokens))
     storefront_bot_cache.configure(session)
+
+
+background_tasks: set = set()  # keeps references, so the tasks are not garbage collected
 
 
 async def _startup() -> None:
@@ -106,6 +111,8 @@ async def _startup() -> None:
                 sys.exit(1)
     if config.MULTIBOT:
         await MultibotService.restore_child_bot_webhooks(STOREFRONT_WEBHOOK_URL)
+    from services.review_request import ReviewRequestService
+    background_tasks.add(asyncio.create_task(ReviewRequestService.run_forever()))
     for admin in config.ADMIN_ID_LIST:
         try:
             await bot.send_message(admin, 'Bot is working')
@@ -137,6 +144,7 @@ admin.add_model_view(StorefrontBotAdmin)
 admin.add_model_view(ApironeInvoiceAdmin)
 admin.add_model_view(StaffMemberAdmin)
 admin.add_model_view(TextOverrideAdmin)
+admin.add_model_view(CustomButtonAdmin)
 admin.add_model_view(BuyAdmin)
 admin.add_model_view(ShippingOptionAdmin)
 admin.add_model_view(CouponAdmin)

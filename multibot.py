@@ -78,7 +78,9 @@ async def _send_welcome(message: Message, telegram_id: int, language: Language, 
         return await message.answer(get_text(language, BotEntity.USER, "storefront_none_available"),
                                     reply_markup=_open_shop_markup(None, language, True))
     caption = get_text(language, BotEntity.USER, "storefront_your_link").format(bot_username=storefront.username)
-    markup = _open_shop_markup(storefront, language, True)
+    from services.custom_buttons import CustomButtonService
+    markup = (await CustomButtonService.add_rows(InlineKeyboardBuilder.from_markup(_open_shop_markup(storefront, language, True)),
+                                                 session)).as_markup()
     photo = TextService.get_welcome_photo(language) or get_bot_photo_id()
     try:
         return await message.answer_photo(photo, caption=caption, reply_markup=markup)
@@ -234,3 +236,8 @@ main_router_multibot.message.middleware(DBSessionMiddleware())
 main_router_multibot.message.middleware(I18nMiddleware())
 main_router_multibot.callback_query.middleware(DBSessionMiddleware())
 main_router_multibot.callback_query.middleware(I18nMiddleware())
+
+
+# Review requests can arrive through the main bot when the customer's storefront is unavailable.
+from services.review_request import create_review_request_router  # noqa: E402
+main_router_multibot.include_router(create_review_request_router())

@@ -11,6 +11,26 @@ from models.item import Item, ItemDTO, ItemAvailabilityDTO
 class ItemRepository:
 
     @staticmethod
+    async def get_products_in_category(category_id: int, session: AsyncSession | Session) -> list[tuple]:
+        """(subcategory_id, name, units in stock, units ever added) for products that sit in this category."""
+        from models.subcategory import Subcategory
+        stmt = (select(Item.subcategory_id, Subcategory.name,
+                       func.count(Item.id).filter(Item.is_sold == False), func.count(Item.id))
+                .join(Subcategory, Subcategory.id == Item.subcategory_id)
+                .where(Item.category_id == category_id)
+                .group_by(Item.subcategory_id, Subcategory.name)
+                .order_by(Subcategory.name))
+        return [tuple(row) for row in (await session_execute(stmt, session)).all()]
+
+    @staticmethod
+    async def get_latest(category_id: int, subcategory_id: int, session: AsyncSession | Session) -> ItemDTO | None:
+        """The last unit added for a product: its price, description and type are reused when restocking."""
+        stmt = (select(Item).where(Item.category_id == category_id, Item.subcategory_id == subcategory_id)
+                .order_by(Item.id.desc()).limit(1))
+        item = (await session_execute(stmt, session)).scalar()
+        return ItemDTO.model_validate(item, from_attributes=True) if item else None
+
+    @staticmethod
     async def get_available_qty(item_type: ItemType | None, category_id: int | None, subcategory_id: int,
                                 session: AsyncSession) -> int:
         conditions = [

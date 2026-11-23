@@ -11,6 +11,7 @@ from enums.language import Language
 from enums.sort_property import SortProperty
 from handlers.common.common import add_pagination_buttons, add_sorting_buttons, add_search_button, get_filters_settings
 from repositories.button_media import ButtonMediaRepository
+from models.category import CategoryDTO
 from repositories.category import CategoryRepository
 from services.media import MediaService
 from utils.utils import get_text
@@ -19,11 +20,27 @@ from utils.utils import get_text
 class CategoryService:
 
     @staticmethod
+    def get_description(category: CategoryDTO, language: Language) -> str:
+        descriptions = category.descriptions or {}
+        return descriptions.get(language.value) or descriptions.get(Language.EN.value) or ""
+
+    @staticmethod
+    def build_card(category: CategoryDTO, language: Language, prompt: str) -> str:
+        """Caption of a category screen: its name, its description (if set), then what to do next."""
+        parts = [get_text(language, BotEntity.USER, "category_card").format(category_name=category.name)]
+        description = CategoryService.get_description(category, language)
+        if description:
+            parts.append(description)
+        parts.append(prompt)
+        return "\n\n".join(parts)
+
+    @staticmethod
     async def get_buttons(
             callback_data: AllCategoriesCallback | None,
             state: FSMContext,
             session: AsyncSession,
-            language: Language
+            language: Language,
+            telegram_id: int | None = None
     ) -> tuple[InputMediaPhoto |
                InputMediaAnimation |
                InputMediaVideo, InlineKeyboardBuilder]:
@@ -50,16 +67,10 @@ class CategoryService:
             )
         has_categories = len(categories) > 0
         if not has_categories:
-            caption = get_text(language, BotEntity.USER, "no_categories")
+            prompt = get_text(language, BotEntity.USER, "no_categories")
         else:
             kb_builder.adjust(2)
-            if callback_data.item_type:
-                item_type = callback_data.item_type.get_localized(language)
-            else:
-                item_type = get_text(language, BotEntity.COMMON, "all")
-            caption = get_text(language, BotEntity.USER, "pick_category").format(
-                item_type=item_type
-            )
+            prompt = get_text(language, BotEntity.USER, "pick_category")
             if parent_id is not None and await CategoryRepository.has_own_items(
                     parent_id, callback_data.item_type, session):
                 # Products that sit directly in this category, next to its subcategories.
@@ -68,16 +79,9 @@ class CategoryService:
                     callback_data=AllCategoriesCallback.create(level=2,
                                                                item_type=callback_data.item_type,
                                                                category_id=parent_id).pack()))
-            elif parent_id is None:
-                kb_builder.row(
-                    InlineKeyboardButton(
-                        text=get_text(language, BotEntity.COMMON, "pick_all_categories"),
-                        callback_data=AllCategoriesCallback.create(level=2,
-                                                                   item_type=callback_data.item_type).pack()
-                    )
-                )
         if parent_id is None:
-            back_button = callback_data.get_back_button(language, 0)
+            # The catalog starts here, so there is nothing to go back to.
+            back_button = None
         else:
             parent = await CategoryRepository.get_by_id(parent_id, session)
             back_button = AllCategoriesCallback.create(
@@ -92,8 +96,16 @@ class CategoryService:
             CategoryRepository.get_maximum_page(filters, session, parent_id, callback_data.item_type),
             back_button, language
         )
-        button_media = await ButtonMediaRepository.get_by_button(
-            KeyboardButton.ALL_CATEGORIES, session
-        )
-        media = MediaService.convert_to_media(button_media.media_id, caption=caption)
+        if parent_id is None:
+            caption = prompt
+            if telegram_id is not None:
+                from services.user import UserService
+                caption += "\n\n" + await UserService.get_balance_line(telegram_id, session, language)
+            button_media = await ButtonMediaRepository.get_by_button(
+                KeyboardButton.ALL_CATEGORIES, session
+            )
+            media = MediaService.convert_to_media(button_media.media_id, caption=caption)
+        else:
+            caption = CategoryService.build_card(parent, language, prompt)
+            media = MediaService.convert_to_media(parent.media_id, caption=caption)
         return media, kb_builder

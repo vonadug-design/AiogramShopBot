@@ -99,6 +99,11 @@ class BuyService:
                                                               buy_id=callback_data.buy_id,
                                                               buyItem_id=callback_data.buyItem_id)
             )
+        if callback_data.user_role == UserRole.USER and has_physical is False:
+            kb_builder.button(text=get_text(language, BotEntity.USER, "purchase_resend_button"),
+                              callback_data=MyProfileCallback.create(level=8, buy_id=callback_data.buy_id,
+                                                                     buyItem_id=callback_data.buyItem_id))
+        kb_builder.adjust(1)
         kb_builder.row(callback_data.get_back_button(language))
         if len(msg) > 1024:
             msg = msg_template.format(

@@ -60,7 +60,7 @@ class CategoryRepository:
         visible, _ = await CategoryRepository._get_visible_ids(item_type, session)
         stmt = (select(Category)
                 .where(*CategoryRepository._level_conditions(visible, parent_id, filters))
-                .order_by(*sort_methods, Category.name)
+                .order_by(*sort_methods, Category.position, Category.name)
                 .limit(config.PAGE_ENTRIES)
                 .offset(page * config.PAGE_ENTRIES))
         categories = await session_execute(stmt, session)
@@ -185,3 +185,41 @@ class CategoryRepository:
                 .where(Category.id == category_dto.id)
                 .values(**category_dto.model_dump()))
         await session_execute(stmt, session)
+
+    @staticmethod
+    async def get_children_all(parent_id: int | None, session: Session | AsyncSession) -> list[CategoryDTO]:
+        """Every category of one level, with or without stock (admin catalog), in the shop's order."""
+        condition = Category.parent_id.is_(None) if parent_id is None else Category.parent_id == parent_id
+        result = await session_execute(select(Category).where(condition)
+                                       .order_by(Category.position, Category.name), session)
+        return [CategoryDTO.model_validate(category, from_attributes=True) for category in result.scalars().all()]
+
+    @staticmethod
+    async def move(category_id: int, step: int, session: Session | AsyncSession) -> None:
+        """Moves a category one place up (step -1) or down (step 1) among its siblings."""
+        category = await CategoryRepository.get_by_id(category_id, session)
+        siblings = await CategoryRepository.get_children_all(category.parent_id, session)
+        ids = [sibling.id for sibling in siblings]
+        index = ids.index(category_id)
+        target = index + step
+        if 0 <= target < len(ids):
+            ids[index], ids[target] = ids[target], ids[index]
+        for position, sibling_id in enumerate(ids):
+            await session_execute(update(Category).where(Category.id == sibling_id).values(position=position),
+                                  session)
+
+    @staticmethod
+    async def set_description(category_id: int, language_code: str, text: str | None,
+                              session: Session | AsyncSession) -> None:
+        category = await CategoryRepository.get_by_id(category_id, session)
+        descriptions = dict(category.descriptions or {})
+        if text:
+            descriptions[language_code] = text
+        else:
+            descriptions.pop(language_code, None)
+        await session_execute(update(Category).where(Category.id == category_id)
+                              .values(descriptions=descriptions or None), session)
+
+    @staticmethod
+    async def set_media(category_id: int, media_id: str, session: Session | AsyncSession) -> None:
+        await session_execute(update(Category).where(Category.id == category_id).values(media_id=media_id), session)

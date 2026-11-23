@@ -11,30 +11,21 @@ from handlers.common.common import enable_search
 from handlers.user.constants import UserStates
 from services.cart import CartService
 from services.category import CategoryService
-from services.item import ItemService
 from services.notification import NotificationService
 from services.subcategory import SubcategoryService
 from utils.custom_filters import IsUserExistFilter
+from utils.redis_client import get_redis
 
 all_categories_router = Router()
 
 
 @all_categories_router.message(F.text.in_(KB.get_localized_set(KB.ALL_CATEGORIES)), IsUserExistFilter())
 async def all_categories_text_message(message: Message, session: AsyncSession, state: FSMContext, language: Language):
-    await all_types(callback=message, session=session, state=state, language=language)
-
-
-async def all_types(**kwargs):
-    message: CallbackQuery | Message = kwargs.get("callback")
-    callback_data: AllCategoriesCallback = kwargs.get("callback_data")
-    session: AsyncSession = kwargs.get("session")
-    language: Language = kwargs.get("language")
-    media, kb_builder = await ItemService.get_all_types(callback_data, session, language)
-    if isinstance(message, Message):
-        await NotificationService.answer_media(message, media, kb_builder.as_markup())
-    else:
-        callback: CallbackQuery = message
-        await callback.message.edit_media(media=media, reply_markup=kb_builder.as_markup())
+    await state.update_data(filter=None)
+    await state.set_state()
+    media, kb_builder = await CategoryService.get_buttons(AllCategoriesCallback.create(level=1), state, session,
+                                                          language, message.from_user.id)
+    await NotificationService.answer_media(message, media, kb_builder.as_markup())
 
 
 async def all_categories(**kwargs):
@@ -57,7 +48,8 @@ async def all_categories(**kwargs):
     else:
         await state.update_data(filter=None)
         await state.set_state()
-        media, kb_builder = await CategoryService.get_buttons(callback_data, state, session, language)
+        media, kb_builder = await CategoryService.get_buttons(callback_data, state, session, language,
+                                                              callback.from_user.id)
     await callback.message.edit_media(media=media, reply_markup=kb_builder.as_markup())
 
 
@@ -100,7 +92,24 @@ async def add_to_cart_confirmation(**kwargs):
     callback_data: AllCategoriesCallback = kwargs.get("callback_data")
     session: AsyncSession = kwargs.get("session")
     language: Language = kwargs.get("language")
-    msg, kb_builder = await SubcategoryService.get_add_to_cart_buttons(callback_data, session, language)
+    msg, kb_builder = await SubcategoryService.get_add_to_cart_buttons(callback_data, session, language,
+                                                                       callback.from_user.id)
+    await callback.message.edit_caption(caption=msg, reply_markup=kb_builder.as_markup())
+
+
+async def buy_now(**kwargs):
+    callback: CallbackQuery = kwargs.get("callback")
+    callback_data: AllCategoriesCallback = kwargs.get("callback_data")
+    session: AsyncSession = kwargs.get("session")
+    language: Language = kwargs.get("language")
+    if not callback_data.confirmation:
+        return await callback.answer()
+    # One purchase per confirmation screen: a double tap must not buy twice.
+    guard_key = f"buy_now:{callback.message.chat.id}:{callback.message.message_id}"
+    if not await get_redis().set(guard_key, 1, nx=True, ex=24 * 3600):
+        return await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    msg, kb_builder = await CartService.buy_now(callback, callback_data, session, language)
     await callback.message.edit_caption(caption=msg, reply_markup=kb_builder.as_markup())
 
 
@@ -133,16 +142,22 @@ async def navigate_categories(callback: CallbackQuery,
                               language: Language):
     current_level = callback_data.level
 
+    if current_level == 0:
+        # The catalog has no "item type" step any more: level 0 is the list of top categories.
+        callback_data = callback_data.model_copy(update={"level": 1, "category_id": None, "page": 0})
+        current_level = 1
     levels = {
-        0: all_types,
         1: all_categories,
         2: show_subcategories_in_category,
         3: select_quantity,
         4: add_to_cart_confirmation,
-        5: add_to_cart
+        5: add_to_cart,
+        6: buy_now
     }
 
-    current_level_function = levels[current_level]
+    current_level_function = levels.get(current_level)
+    if current_level_function is None:
+        return await callback.answer()
 
     kwargs = {
         "callback": callback,

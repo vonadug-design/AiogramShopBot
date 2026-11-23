@@ -11,7 +11,9 @@ from enums.keyboard_button import KeyboardButton as KB
 from enums.language import Language
 from handlers.common.common import enable_search
 from handlers.user.constants import UserStates
+from repositories.button_media import ButtonMediaRepository
 from services.buy import BuyService
+from services.media import MediaService
 from services.notification import NotificationService
 from services.payment import PaymentService
 from services.referral import ReferralService
@@ -25,6 +27,33 @@ my_profile_router = Router()
 @my_profile_router.message(F.text.in_(KB.get_localized_set(KB.MY_PROFILE)), IsUserExistFilter())
 async def my_profile_text_message(message: Message, session: AsyncSession, state: FSMContext, language: Language):
     await my_profile(message=message, session=session, state=state, language=language)
+
+
+@my_profile_router.message(F.text.in_(KB.get_localized_set(KB.MY_PURCHASES)), IsUserExistFilter())
+async def my_purchases_text_message(message: Message, session: AsyncSession, state: FSMContext, language: Language):
+    await state.clear()
+    caption, kb_builder = await UserService.get_purchase_history_buttons(message.from_user.id, None, state,
+                                                                         session, language)
+    button_media = await ButtonMediaRepository.get_by_button(KB.MY_PURCHASES, session)
+    media = MediaService.convert_to_media(button_media.media_id, caption=caption)
+    await NotificationService.answer_media(message, media, kb_builder.as_markup())
+
+
+async def resend_purchase(**kwargs):
+    """Sends the keys of one purchased product again, each with its photo."""
+    callback: CallbackQuery = kwargs.get("callback")
+    callback_data: MyProfileCallback = kwargs.get("callback_data")
+    session: AsyncSession = kwargs.get("session")
+    language: Language = kwargs.get("language")
+    from repositories.buyItem import BuyItemRepository
+    from repositories.item import ItemRepository
+    from services.delivery import DeliveryService
+    if callback_data.buyItem_id is None:
+        return await callback.answer()
+    buy_item = await BuyItemRepository.get_by_id(callback_data.buyItem_id, session)
+    items = await ItemRepository.get_by_id_list(buy_item.item_ids, session)
+    await callback.answer(get_text(language, BotEntity.USER, "purchase_resent"))
+    await DeliveryService.deliver(callback.bot, callback.from_user.id, items, language)
 
 
 async def my_profile(**kwargs):
@@ -194,7 +223,8 @@ async def navigate(callback: CallbackQuery,
         4: get_purchased_item,
         5: get_purchase,
         6: edit_language,
-        7: referral_system
+        7: referral_system,
+        8: resend_purchase
     }
 
     current_level_function = levels[current_level]
