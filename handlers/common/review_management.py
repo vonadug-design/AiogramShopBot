@@ -1,3 +1,4 @@
+from services.ownership import OwnershipService
 from aiogram import Router, F
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -94,6 +95,17 @@ async def review_management_navigation(callback: CallbackQuery,
                                        callback_data: ReviewManagementCallback,
                                        session: AsyncSession,
                                        language: Language):
+    from enums.user_role import UserRole
+    from enums.staff_role import Permission
+    from services.staff import StaffService
+    if callback_data.user_role == UserRole.ADMIN:
+        if not await StaffService.can(callback.from_user.id, Permission.REVIEWS, session):
+            return await callback.answer()
+    elif callback_data.level in (1, 2, 3, 4) and \
+            (callback_data.buy_id is not None or callback_data.buyItem_id is not None) and \
+            not await OwnershipService.owns_buy(callback.from_user.id, callback_data.buy_id,
+                                                callback_data.buyItem_id, session):
+        return await callback.answer()
     current_level = callback_data.level
 
     levels = {

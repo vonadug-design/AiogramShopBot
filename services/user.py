@@ -31,6 +31,15 @@ class UserService:
     async def create_if_not_exist(user_dto: UserDTO,
                                   referrer_code: str | None,
                                   session: AsyncSession | Session) -> None:
+        if user_dto.telegram_username:
+            # Usernames are unique in the DB, but Telegram lets a username move to another account.
+            from sqlalchemy import update as sql_update
+            from db import session_execute
+            from models.user import User
+            await session_execute(sql_update(User)
+                                  .where(User.telegram_username == user_dto.telegram_username,
+                                         User.telegram_id != user_dto.telegram_id)
+                                  .values(telegram_username=None), session)
         user = await UserRepository.get_by_tgid(user_dto.telegram_id, session)
         match user:
             case None:
@@ -52,6 +61,19 @@ class UserService:
                 await session_commit(session)
 
     @staticmethod
+    async def get_balance(telegram_id: int, session: AsyncSession | Session) -> float:
+        user = await UserRepository.get_by_tgid(telegram_id, session)
+        if user is None:
+            return 0.0
+        return round(user.top_up_amount - user.consume_records, 2)
+
+    @staticmethod
+    async def get_balance_line(telegram_id: int, session: AsyncSession | Session, language: Language) -> str:
+        return get_text(language, BotEntity.USER, "balance_line").format(
+            balance=await UserService.get_balance(telegram_id, session),
+            currency_sym=config.CURRENCY.get_localized_symbol())
+
+    @staticmethod
     async def get(user_dto: UserDTO, session: AsyncSession | Session) -> User | None:
         return await UserRepository.get_by_tgid(user_dto.telegram_id, session)
 
@@ -64,11 +86,9 @@ class UserService:
         kb_builder = InlineKeyboardBuilder()
         kb_builder.button(text=get_text(language, BotEntity.USER, "top_up_balance_button"),
                           callback_data=MyProfileCallback.create(level=1))
-        kb_builder.button(text=get_text(language, BotEntity.USER, "purchase_history_button"),
-                          callback_data=MyProfileCallback.create(level=3))
-        kb_builder.button(text=get_text(Language.EN, BotEntity.USER, "referral_button"),
+        kb_builder.button(text=get_text(language, BotEntity.USER, "referral_button"),
                           callback_data=MyProfileCallback.create(level=7))
-        kb_builder.button(text=get_text(Language.EN, BotEntity.USER, "language"),
+        kb_builder.button(text=get_text(language, BotEntity.USER, "language"),
                           callback_data=MyProfileCallback.create(level=6))
         kb_builder.adjust(2)
         user = await UserRepository.get_by_tgid(telegram_id, session)
@@ -86,6 +106,14 @@ class UserService:
     async def get_top_up_buttons(callback_data: MyProfileCallback,
                                  language: Language) -> tuple[str, InlineKeyboardBuilder]:
         kb_builder = InlineKeyboardBuilder()
+        if getattr(config, "PAYMENT_PROVIDER", "kryptoexpress") == "apirone":
+            from callbacks import ApironeCallback
+            from crypto_api.apirone import APIRONE_CURRENCIES, enabled_currencies
+            for currency in enabled_currencies():
+                kb_builder.button(text=APIRONE_CURRENCIES[currency][0], callback_data=ApironeCallback(currency=currency))
+            kb_builder.adjust(1)
+            kb_builder.row(callback_data.get_back_button(language))
+            return get_text(language, BotEntity.USER, "choose_top_up_method"), kb_builder
         for cryptocurrency in Cryptocurrency.get_visible():
             kb_builder.button(
                 text=cryptocurrency.get_localized(language),
@@ -105,12 +133,18 @@ class UserService:
                                            language: Language) -> tuple[str, InlineKeyboardBuilder]:
         callback_data = callback_data or MyProfileCallback.create(level=3)
         user_id = None
+        if callback_data.user_role == UserRole.ADMIN and telegram_id is not None:
+            from services.staff import StaffService
+            from enums.staff_role import Permission
+            if not await StaffService.can(telegram_id, Permission.BUYS, session):
+                callback_data = callback_data.model_copy(update={"user_role": UserRole.USER})
         if callback_data.user_role == UserRole.ADMIN:
             back_button = AdminMenuCallback.create(0).get_back_button(language, 0)
         else:
             user = await UserRepository.get_by_tgid(telegram_id, session)
             user_id = user.id
-            back_button = callback_data.get_back_button(language, 0)
+            # "My purchases" is a main menu button now, so the list has nothing to go back to.
+            back_button = None
         sort_pairs, _ = await get_filters_settings(state, callback_data)
         buys = await BuyRepository.get_by_buyer_id(sort_pairs, user_id, callback_data.page, session)
         kb_builder = InlineKeyboardBuilder()
@@ -131,9 +165,9 @@ class UserService:
         kb_builder = await add_pagination_buttons(kb_builder, callback_data,
                                                   BuyRepository.get_max_page_purchase_history(user_id, session),
                                                   back_button, language)
-        if len(kb_builder.as_markup().inline_keyboard) > 1 and callback_data.user_role == UserRole.USER:
+        if len(buys) > 0 and callback_data.user_role == UserRole.USER:
             caption = get_text(language, BotEntity.USER, "purchases")
-        elif len(kb_builder.as_markup().inline_keyboard) > 1 and callback_data.user_role == UserRole.ADMIN:
+        elif len(buys) > 0 and callback_data.user_role == UserRole.ADMIN:
             caption = get_text(language, BotEntity.ADMIN, "pick_purchase")
         else:
             caption = get_text(language, BotEntity.USER, "no_purchases")
@@ -142,9 +176,10 @@ class UserService:
     @staticmethod
     async def edit_language(telegram_id: int,
                             callback_data: MyProfileCallback,
-                            session: AsyncSession) -> tuple[str, InlineKeyboardBuilder]:
+                            session: AsyncSession,
+                            language: Language = Language.EN) -> tuple[str, InlineKeyboardBuilder]:
         kb_builder = InlineKeyboardBuilder()
-        default_language = Language.EN
+        default_language = language
         back_button = callback_data.get_back_button(default_language, 0)
         if callback_data.language is None:
             msg = get_text(default_language, BotEntity.USER, "edit_language")

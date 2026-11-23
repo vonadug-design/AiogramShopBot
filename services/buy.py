@@ -66,12 +66,17 @@ class BuyService:
         subcategory = await SubcategoryRepository.get_by_id(items[0].subcategory_id, session)
         us_datetime_12h = buy.buy_datetime.strftime("%m/%d/%Y, %I:%M %p")
         msg_template = get_text(language, BotEntity.USER, "purchase_details")
+        paid_amount = items[0].price * len(items)
+        discount = getattr(buy, "discount", None) or 0
+        if discount and abs(paid_amount - (buy.total_price + discount)) < 0.01:
+            # This line is the whole purchase, so show what was actually charged after the coupon.
+            paid_amount = buy.total_price
         content_list = []
         content_list.append(msg_template.format(
             category_name=category.name,
             subcategory_name=subcategory.name,
             currency_sym=config.CURRENCY.get_localized_symbol(),
-            total_fiat_price=items[0].price * len(items),
+            total_fiat_price=paid_amount,
             fiat_price=items[0].price,
             qty=len(items),
             purchase_datetime=us_datetime_12h
@@ -94,13 +99,25 @@ class BuyService:
                                                               buy_id=callback_data.buy_id,
                                                               buyItem_id=callback_data.buyItem_id)
             )
+        if callback_data.user_role == UserRole.USER and has_physical is False:
+            kb_builder.button(text=get_text(language, BotEntity.USER, "purchase_resend_button"),
+                              callback_data=MyProfileCallback.create(level=8, buy_id=callback_data.buy_id,
+                                                                     buyItem_id=callback_data.buyItem_id))
+        if callback_data.user_role == UserRole.USER:
+            from services.custom_buttons import CustomButtonService
+            support_url = CustomButtonService.get_support_link_with_text(
+                get_text(language, BotEntity.USER, "purchase_problem_text").format(buy_id=buy.id,
+                                                                                   subcategory_name=subcategory.name))
+            if support_url:
+                kb_builder.button(text=get_text(language, BotEntity.USER, "purchase_problem_button"), url=support_url)
+        kb_builder.adjust(1)
         kb_builder.row(callback_data.get_back_button(language))
         if len(msg) > 1024:
             msg = msg_template.format(
                 category_name=category.name,
                 subcategory_name=subcategory.name,
                 currency_sym=config.CURRENCY.get_localized_symbol(),
-                total_fiat_price=items[0].price * len(items),
+                total_fiat_price=paid_amount,
                 fiat_price=items[0].price,
                 qty=len(items),
                 purchase_datetime=us_datetime_12h,

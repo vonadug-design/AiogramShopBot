@@ -25,10 +25,16 @@ services:
       - caddy
     networks:
       - caddy
+    # Public DNS: some providers' DNS filters block ngrok and the Telegram/Apirone APIs.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     ports:
       - "127.0.0.1:5000:5000" # ${WEBAPP_PORT}:${WEBAPP_PORT}
     volumes:
       - ./i18n:/bot/i18n
+      - ./media_cache:/bot/media_cache
+      - ./backups:/backups
     command: [ "python", "-u", "run.py" ]
     restart: always
 
@@ -58,6 +64,23 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - ./postgres_data:/var/lib/postgresql
+    networks:
+      - caddy
+    restart: always
+
+  # A copy of the database once a day (and on request from the admin menu) into ./backups;
+  # the bot also sends each copy to the owners in Telegram.
+  backup:
+    container_name: "backup"
+    image: "postgres:18"
+    env_file:
+      - .env
+    entrypoint: [ "sh", "/backup.sh" ]
+    volumes:
+      - ./scripts/backup.sh:/backup.sh:ro
+      - ./backups:/backups
+    depends_on:
+      - postgres
     networks:
       - caddy
     restart: always

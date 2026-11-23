@@ -8,6 +8,7 @@ from callbacks import ShippingManagementCallback
 from enums.language import Language
 from handlers.admin.constants import ShippingManagementStates
 from services.shipping_management import ShippingManagementService
+from enums.staff_role import Permission
 from utils.custom_filters import AdminIdFilter
 
 shipping_management = Router()
@@ -58,7 +59,7 @@ async def edit_shipping_option(**kwargs):
     await state.update_data(msg_id=message.message_id, chat_id=message.chat.id)
 
 
-@shipping_management.message(AdminIdFilter(), F.text, StateFilter(ShippingManagementStates.shipping_name,
+@shipping_management.message(AdminIdFilter(Permission.SHIPPING), F.text, StateFilter(ShippingManagementStates.shipping_name,
                                                                   ShippingManagementStates.shipping_price))
 async def receive_shipping_option_data(message: Message,
                                        state: FSMContext,
@@ -68,7 +69,7 @@ async def receive_shipping_option_data(message: Message,
     await state.update_data(msg_id=message.message_id, chat_id=message.chat.id)
 
 
-@shipping_management.message(AdminIdFilter(), F.text, StateFilter(ShippingManagementStates.edit_property))
+@shipping_management.message(AdminIdFilter(Permission.SHIPPING), F.text, StateFilter(ShippingManagementStates.edit_property))
 async def receive_shipping_option_edit_value(message: Message,
                                              state: FSMContext,
                                              session: AsyncSession,
@@ -78,7 +79,7 @@ async def receive_shipping_option_edit_value(message: Message,
     await state.update_data(msg_id=message.message_id, chat_id=message.chat.id)
 
 
-@shipping_management.callback_query(AdminIdFilter(), ShippingManagementCallback.filter())
+@shipping_management.callback_query(AdminIdFilter(Permission.SHIPPING), ShippingManagementCallback.filter())
 async def shipping_management_navigation(callback: CallbackQuery, state: FSMContext,
                                          callback_data: ShippingManagementCallback,
                                          session: AsyncSession,

@@ -132,9 +132,14 @@ class MediaService:
                 await SubcategoryRepository.update(entity_dto, session)
         await session_commit(session)
         await state.clear()
+        if state_data.get("catalog_return") is not None:
+            from callbacks import CatalogCallback
+            back_callback = CatalogCallback.create(0, state_data["catalog_return"])
+        else:
+            back_callback = MediaManagementCallback.create(0)
         kb_builder.button(
             text=get_text(language, BotEntity.COMMON, "back_button"),
-            callback_data=MediaManagementCallback.create(0)
+            callback_data=back_callback
         )
         return get_text(language, BotEntity.ADMIN, "entity_media_successfully_edited").format(
             entity=entity_type.get_localized(language),

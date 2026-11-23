@@ -30,6 +30,13 @@ from repositories.subcategory import SubcategoryRepository
 from utils.utils import get_text
 
 
+
+def _admin_language() -> Language:
+    """Language of notifications sent to owners/admins (ADMIN_LANGUAGE in .env, default English)."""
+    import config
+    return Language.from_locale(getattr(config, "ADMIN_LANGUAGE", None) or "en")
+
+
 class NotificationService:
     PRIVACY_RESTRICTED_PATTERN = "BUTTON_USER_PRIVACY_RESTRICTED"
     TG_USER_URL_PREFIX = "tg://user?id="
@@ -65,7 +72,7 @@ class NotificationService:
         if user_link is None:
             return False
         kb_builder.button(
-            text=text or get_text(Language.EN, BotEntity.COMMON, "user"),
+            text=text or get_text(_admin_language(), BotEntity.COMMON, "user"),
             url=user_link
         )
         return True
@@ -122,7 +129,8 @@ class NotificationService:
     @staticmethod
     async def send_to_admins(message: str | BufferedInputFile, reply_markup: types.InlineKeyboardMarkup | None):
         bot = create_bot(TOKEN)
-        for admin_id in ADMIN_ID_LIST:
+        from services.staff import StaffService
+        for admin_id in await StaffService.get_notification_ids():
             try:
                 if isinstance(message, str):
                     async def _send(current_markup):
@@ -211,7 +219,7 @@ class NotificationService:
         )
         await NotificationService.send_to_user(user_notification_msg, user_dto.telegram_id)
         if referral_bonus_dto.referrer_user_dto:
-            referrer_notification_msg = get_text(Language.EN, BotEntity.USER, "referrer_notification").format(
+            referrer_notification_msg = get_text(referral_bonus_dto.referrer_user_dto.language, BotEntity.USER, "referrer_notification").format(
                 currency_sym=currency_sym,
                 referrer_bonus=referral_bonus_dto.applied_referrer_bonus
             )
@@ -221,7 +229,7 @@ class NotificationService:
             await NotificationService.add_user_button(
                 admin_kb_builder,
                 referral_bonus_dto.referrer_user_dto,
-                text=get_text(Language.EN, BotEntity.COMMON, "referrer")
+                text=get_text(_admin_language(), BotEntity.COMMON, "referrer")
             )
             admin_kb_builder.adjust(1)
             admin_kb_markup = admin_kb_builder.as_markup() if list(admin_kb_builder.buttons) else None
@@ -243,9 +251,9 @@ class NotificationService:
         await NotificationService.edit_caption(edited_payment_message, table_payment_dto.message_id,
                                                user_dto.telegram_id)
         if user_dto.telegram_username:
-            message = get_text(Language.EN, BotEntity.ADMIN, "notification_new_deposit_username")
+            message = get_text(_admin_language(), BotEntity.ADMIN, "notification_new_deposit_username")
         else:
-            message = get_text(Language.EN, BotEntity.ADMIN, "notification_new_deposit_id")
+            message = get_text(_admin_language(), BotEntity.ADMIN, "notification_new_deposit_id")
         message = message.format(
             username=user_dto.telegram_username,
             telegram_id=user_dto.telegram_id,
@@ -265,7 +273,7 @@ class NotificationService:
         if admin_kb_markup:
             admin_kb_builder = InlineKeyboardBuilder.from_markup(admin_kb_markup)
         admin_kb_builder.button(
-            text=get_text(Language.EN, BotEntity.USER, "purchase_history_item").format(
+            text=get_text(_admin_language(), BotEntity.USER, "purchase_history_item").format(
                 buy_id=buy.id,
                 total_price=buy.total_price,
                 currency_sym=config.CURRENCY.get_localized_symbol()
@@ -301,9 +309,9 @@ class NotificationService:
             category = category_map[item_example.category_id]
             subcategory = subcategory_map[item_example.subcategory_id]
             if user.telegram_username:
-                msg = get_text(Language.EN, BotEntity.ADMIN, "notification_purchase_with_username")
+                msg = get_text(_admin_language(), BotEntity.ADMIN, "notification_purchase_with_username")
             else:
-                msg = get_text(Language.EN, BotEntity.ADMIN, "notification_purchase_with_tgid")
+                msg = get_text(_admin_language(), BotEntity.ADMIN, "notification_purchase_with_tgid")
             cart_content.append(msg.format(
                 username=user.telegram_username,
                 telegram_id=user.telegram_id,
@@ -314,11 +322,11 @@ class NotificationService:
                 currency_sym=currency_sym))
         message = "\n".join(cart_content) + "\n\n"
         price_content = []
-        price_content.append(get_text(Language.EN, BotEntity.USER, "cart_total_price").format(
+        price_content.append(get_text(_admin_language(), BotEntity.USER, "cart_total_price").format(
             cart_total_price=buy.total_price + buy.discount, currency_sym=currency_sym))
-        price_content.append(get_text(Language.EN, BotEntity.USER, "cart_total_discount").format(
+        price_content.append(get_text(_admin_language(), BotEntity.USER, "cart_total_discount").format(
             cart_total_discount=buy.discount, currency_sym=currency_sym))
-        price_content.append(get_text(Language.EN, BotEntity.USER, "cart_total_with_discount").format(
+        price_content.append(get_text(_admin_language(), BotEntity.USER, "cart_total_with_discount").format(
             cart_total_final=buy.total_price, currency_sym=currency_sym))
         message += "\n".join(price_content)
         await NotificationService.send_to_admins(message, admin_kb_builder.as_markup())
@@ -376,10 +384,10 @@ class NotificationService:
     @staticmethod
     async def withdrawal(withdraw_dto: WithdrawalDTO):
         kb_builder = InlineKeyboardBuilder()
-        [kb_builder.button(text=get_text(Language.EN, BotEntity.ADMIN, "transaction"),
+        [kb_builder.button(text=get_text(_admin_language(), BotEntity.ADMIN, "transaction"),
                            url=f"{withdraw_dto.cryptoCurrency.get_explorer_base_url()}/tx/{tx_id}")
          for tx_id in withdraw_dto.txIdList]
-        msg_text = get_text(Language.EN, BotEntity.ADMIN, "transaction_broadcasted")
+        msg_text = get_text(_admin_language(), BotEntity.ADMIN, "transaction_broadcasted")
         kb_builder.adjust(1)
         await NotificationService.send_to_admins(msg_text, kb_builder.as_markup())
 
@@ -395,7 +403,7 @@ class NotificationService:
         }
         subcategory_dto = subcategory_map[item_dto.subcategory_id]
         kb_builder.button(
-            text=get_text(Language.EN, BotEntity.USER, "review").format(
+            text=get_text(_admin_language(), BotEntity.USER, "review").format(
                 subcategory_name=subcategory_dto.name
             ),
             callback_data=ReviewManagementCallback.create(
@@ -406,5 +414,5 @@ class NotificationService:
                 user_role=UserRole.ADMIN
             )
         )
-        msg_text = get_text(Language.EN, BotEntity.ADMIN, "review_notification")
+        msg_text = get_text(_admin_language(), BotEntity.ADMIN, "review_notification")
         await NotificationService.send_to_admins(msg_text, kb_builder.as_markup())

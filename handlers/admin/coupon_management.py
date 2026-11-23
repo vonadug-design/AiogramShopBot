@@ -8,6 +8,7 @@ from callbacks import CouponManagementCallback
 from enums.language import Language
 from handlers.admin.constants import CouponsManagementStates
 from services.coupon_management import CouponManagementService
+from enums.staff_role import Permission
 from utils.custom_filters import AdminIdFilter
 
 coupons_management = Router()
@@ -48,7 +49,7 @@ async def request_coupon_value(**kwargs):
     await state.update_data(msg_id=message.message_id, chat_id=message.chat.id)
 
 
-@coupons_management.message(AdminIdFilter(), F.text, StateFilter(CouponsManagementStates.coupon_value,
+@coupons_management.message(AdminIdFilter(Permission.COUPONS), F.text, StateFilter(CouponsManagementStates.coupon_value,
                                                                  CouponsManagementStates.coupon_name))
 async def receive_coupon_value(message: Message, state: FSMContext, language: Language):
     msg, kb_builder = await CouponManagementService.receive_coupon_value(message, state, language)
@@ -84,7 +85,7 @@ async def view_coupon(**kwargs):
     await callback.message.edit_text(text=msg, reply_markup=kb_builder.as_markup())
 
 
-@coupons_management.callback_query(AdminIdFilter(), CouponManagementCallback.filter())
+@coupons_management.callback_query(AdminIdFilter(Permission.COUPONS), CouponManagementCallback.filter())
 async def coupon_management_navigation(callback: CallbackQuery,
                                        state: FSMContext,
                                        callback_data: CouponManagementCallback,

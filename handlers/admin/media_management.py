@@ -10,6 +10,7 @@ from handlers.admin.constants import MediaManagementStates
 from handlers.common.common import enable_search
 from services.admin import AdminService
 from services.media import MediaService
+from enums.staff_role import Permission
 from utils.custom_filters import AdminIdFilter
 
 media_management = Router()
@@ -57,20 +58,20 @@ async def entity_media_edit(**kwargs):
     await state.update_data(msg_id=message.message_id, chat_id=message.chat.id)
 
 
-@media_management.message(AdminIdFilter(), F.text, StateFilter(MediaManagementStates.filter_entity))
+@media_management.message(AdminIdFilter(Permission.MEDIA), F.text, StateFilter(MediaManagementStates.filter_entity))
 async def receive_filter_message(message: Message, state: FSMContext, session: AsyncSession, language: Language):
     await state.update_data(filter=message.html_text)
     msg, kb_builder = await AdminService.get_entity_picker(None, session, state, language)
     await message.answer(text=msg, reply_markup=kb_builder.as_markup())
 
 
-@media_management.message(AdminIdFilter(), F.photo | F.video | F.animation, StateFilter(MediaManagementStates.media))
+@media_management.message(AdminIdFilter(Permission.MEDIA), F.photo | F.video | F.animation, StateFilter(MediaManagementStates.media))
 async def receive_new_entity_media(message: Message, state: FSMContext, session: AsyncSession, language: Language):
     msg, kb_builder = await MediaService.receive_new_entity_media(message, state, session, language)
     await message.answer(text=msg, reply_markup=kb_builder.as_markup())
 
 
-@media_management.callback_query(AdminIdFilter(), MediaManagementCallback.filter())
+@media_management.callback_query(AdminIdFilter(Permission.MEDIA), MediaManagementCallback.filter())
 async def media_management_navigation(callback: CallbackQuery,
                                       state: FSMContext,
                                       callback_data: MediaManagementCallback,

@@ -17,6 +17,8 @@ class Item(Base):
     subcategory_id = Column(Integer, ForeignKey("subcategories.id", ondelete="CASCADE"), nullable=False)
     subcategory = relationship("Subcategory", back_populates="items")
     private_data = Column(String, nullable=True, unique=False)
+    # Individual photo delivered together with private_data ("0<file_id>", same format as other media)
+    photo_id = Column(String, nullable=True)
     price = Column(Float, nullable=False)
     is_sold = Column(Boolean, nullable=False, default=False)
     is_new = Column(Boolean, nullable=False, default=True)
@@ -38,6 +40,7 @@ class ItemDTO(BaseModel):
     subcategory_id: int | None = None
     subcategory_name: str | None = None
     private_data: str | None = None
+    photo_id: str | None = None
     price: float | None = None
     is_sold: bool | None = None
     is_new: bool | None = None

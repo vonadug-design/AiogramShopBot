@@ -1,3 +1,4 @@
+import secrets
 import os
 
 from dotenv import load_dotenv
@@ -28,11 +29,25 @@ DB_HOST = os.environ.get("DB_HOST", "postgres")
 DB_NAME = os.environ.get("POSTGRES_DB", "aiogram-shop-bot")
 PAGE_ENTRIES = int(os.environ.get("PAGE_ENTRIES", "8"))
 MULTIBOT = os.environ.get("MULTIBOT", False) == 'true'
+# Fernet key used to encrypt storefront bot tokens in the database
+BOT_TOKEN_ENCRYPTION_KEY = os.environ.get("BOT_TOKEN_ENCRYPTION_KEY")
+# How many customers one storefront bot serves before new customers go to the next one
+STOREFRONT_MAX_USERS = int(os.environ.get("STOREFRONT_MAX_USERS", "300"))
+# Where photos shared between storefront bots are kept
+MEDIA_CACHE_DIR = os.environ.get("MEDIA_CACHE_DIR", "media_cache")
+# Payments: "kryptoexpress" (original) or "apirone"
+PAYMENT_PROVIDER = os.environ.get("PAYMENT_PROVIDER", "kryptoexpress").lower()
+APIRONE_ACCOUNT = os.environ.get("APIRONE_ACCOUNT")
+APIRONE_CALLBACK_SECRET = os.environ.get("APIRONE_CALLBACK_SECRET")
+APIRONE_CURRENCIES = os.environ.get("APIRONE_CURRENCIES", "usdt@trx,usdt@bnb,usdt@ton")
 CURRENCY = Currency(os.environ.get("CURRENCY", "USD"))
 KRYPTO_EXPRESS_API_KEY = os.environ.get("KRYPTO_EXPRESS_API_KEY")
 KRYPTO_EXPRESS_API_URL = os.environ.get("KRYPTO_EXPRESS_API_URL")
 KRYPTO_EXPRESS_API_SECRET = os.environ.get("KRYPTO_EXPRESS_API_SECRET")
-WEBHOOK_SECRET_TOKEN = os.environ.get("WEBHOOK_SECRET_TOKEN")
+# Random per start when not set, so the main webhook is never open without a secret.
+WEBHOOK_SECRET_TOKEN = os.environ.get("WEBHOOK_SECRET_TOKEN") or secrets.token_hex(32)
+# Language of notifications to owners/admins: en, ru or lv
+ADMIN_LANGUAGE = os.environ.get("ADMIN_LANGUAGE", "en")
 REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD")
 TELEGRAM_PROXY_URL = os.environ.get("TELEGRAM_PROXY_URL")

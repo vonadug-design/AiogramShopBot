@@ -26,6 +26,7 @@ class User(Base):
     referral_code = Column(String(8), nullable=True, unique=True, index=True)
     referred_by_user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     referred_at = Column(DateTime(timezone=True), nullable=True)
+    storefront_bot_id = Column(Integer, ForeignKey('storefront_bots.id', ondelete='SET NULL'), nullable=True, index=True)
     received_referral_bonuses = relationship(
         "ReferralBonus",
         foreign_keys="ReferralBonus.referral_user_id",
@@ -83,6 +84,7 @@ class UserDTO(BaseModel):
     referral_code: str | None = None
     referred_by_user_id: int | None = None
     referred_at: datetime | None = None
+    storefront_bot_id: int | None = None
 
     @staticmethod
     def get_chart_text(language: Language) -> tuple[str, str]:

@@ -5,9 +5,11 @@ from aiogram.types import ErrorEvent, Message, BufferedInputFile, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 import config
-from config import SUPPORT_LINK
+from services.staff import StaffService
+from services.texts import TextService
+from services.custom_buttons import CustomButtonService
 import logging
-from bot import dp, main, redis
+from bot import dp, storefront_dp, main, redis
 from enums.bot_entity import BotEntity
 from enums.keyboard_button import KeyboardButton
 from enums.language import Language
@@ -16,8 +18,8 @@ from middleware.database import DBSessionMiddleware
 from middleware.language import I18nMiddleware
 from middleware.throttling_middleware import ThrottlingMiddleware
 from models.user import UserDTO
-from multibot import main as main_multibot
 from handlers.user.cart import cart_router
+from handlers.user.apirone import apirone_top_up_router
 from handlers.admin.admin import admin_router
 from handlers.user.all_categories import all_categories_router
 from handlers.user.my_profile import my_profile_router
@@ -25,6 +27,7 @@ from repositories.button_media import ButtonMediaRepository
 from services.media import MediaService
 from services.notification import NotificationService
 from services.review import ReviewService
+from services.review_request import create_review_request_router
 from services.user import UserService
 from utils.custom_filters import IsUserExistFilter, IsUserBannedFilter
 from utils.utils import get_bot_photo_id, get_text
@@ -33,32 +36,36 @@ logging.basicConfig(level=logging.INFO)
 main_router = Router()
 
 
+def _button(language: Language, key: str, entity: BotEntity = BotEntity.USER) -> types.KeyboardButton:
+    return types.KeyboardButton(text=get_text(language, entity, key))
+
+
 @main_router.message(CommandStart())
 @main_router.message(Command("help"))
 async def start(message: Message, command: CommandObject, session: AsyncSession, language: Language):
-    all_categories_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "all_categories"))
-    my_profile_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "my_profile"))
-    faq_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "faq"))
-    help_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "help"))
-    admin_menu_button = types.KeyboardButton(text=get_text(language, BotEntity.ADMIN, "menu"))
-    reviews_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "reviews"))
-    cart_button = types.KeyboardButton(text=get_text(language, BotEntity.USER, "cart"))
     telegram_id = message.from_user.id
     await UserService.create_if_not_exist(UserDTO(
         telegram_username=message.from_user.username,
         telegram_id=telegram_id,
         language=language
     ), command.args, session)
-    keyboard = [[all_categories_button, my_profile_button], [faq_button, help_button],
-                [reviews_button],
-                [cart_button]]
-    if telegram_id in config.ADMIN_ID_LIST:
-        keyboard.append([admin_menu_button])
-    start_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2, keyboard=keyboard)
-    bot_photo_id = get_bot_photo_id()
-    await message.answer_photo(photo=bot_photo_id,
-                               caption=get_text(language, BotEntity.COMMON, "start_message"),
-                               reply_markup=start_markup)
+    keyboard = [[_button(language, "all_categories")],
+                [_button(language, "my_purchases"), _button(language, "cart")],
+                [_button(language, "my_profile"), _button(language, "reviews")],
+                [_button(language, "faq"), _button(language, "help")]]
+    if await StaffService.get_role(telegram_id, session) is not None:
+        keyboard.append([_button(language, "menu", BotEntity.ADMIN)])
+    start_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=keyboard)
+    bot_photo_id = TextService.get_welcome_photo(language) or get_bot_photo_id()
+    caption = (get_text(language, BotEntity.COMMON, "start_message") + "\n\n"
+               + await UserService.get_balance_line(telegram_id, session, language))
+    link_buttons = await CustomButtonService.add_rows(InlineKeyboardBuilder(), session)
+    if len(link_buttons.as_markup().inline_keyboard) == 0:
+        await message.answer_photo(photo=bot_photo_id, caption=caption, reply_markup=start_markup)
+        return
+    # A message holds either the menu keyboard or link buttons, so the menu comes with a short second message.
+    await message.answer_photo(photo=bot_photo_id, caption=caption, reply_markup=link_buttons.as_markup())
+    await message.answer(get_text(language, BotEntity.USER, "menu_hint"), reply_markup=start_markup)
 
 
 @main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.FAQ)), IsUserExistFilter())
@@ -72,7 +79,9 @@ async def faq(message: Message, session: AsyncSession, language: Language):
 @main_router.message(F.text.in_(KeyboardButton.get_localized_set(KeyboardButton.HELP)), IsUserExistFilter())
 async def support(message: Message, session: AsyncSession, language: Language):
     kb_builder = InlineKeyboardBuilder()
-    kb_builder.button(text=get_text(language, BotEntity.USER, "help_button"), url=SUPPORT_LINK)
+    support_link = CustomButtonService.get_support_link()
+    if support_link:
+        kb_builder.button(text=get_text(language, BotEntity.USER, "help_button"), url=support_link)
     button_media = await ButtonMediaRepository.get_by_button(KeyboardButton.HELP, session)
     media = MediaService.convert_to_media(button_media.media_id,
                                           caption=get_text(language, BotEntity.USER, "help_string"))
@@ -104,8 +113,10 @@ users_routers = Router()
 users_routers.include_routers(
     all_categories_router,
     my_profile_router,
+    apirone_top_up_router,
     cart_router,
-    review_management_router
+    review_management_router,
+    create_review_request_router()
 )
 users_routers.message.middleware(throttling_middleware)
 users_routers.callback_query.middleware(throttling_middleware)
@@ -134,7 +145,10 @@ async def banned_message(callback: CallbackQuery, language: Language):
 
 if __name__ == '__main__':
     if config.MULTIBOT:
-        main_multibot(main_router)
+        from multibot import main_router_multibot
+        dp.include_router(main_router_multibot)
+        storefront_dp.include_router(main_router)
+        main()
     else:
         dp.include_router(main_router)
         main()

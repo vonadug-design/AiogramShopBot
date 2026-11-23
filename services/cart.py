@@ -1,4 +1,5 @@
 from aiogram.fsm.context import FSMContext
+from services.delivery import DeliveryService
 from aiogram.types import CallbackQuery, InputMediaPhoto, InputMediaVideo, InputMediaAnimation, Message, \
     InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -80,6 +81,74 @@ class CartService:
         )
         kb_builder.row(callback_data.get_back_button(language, 0))
         return media, kb_builder
+
+    @staticmethod
+    async def buy_now(callback: CallbackQuery,
+                      callback_data: AllCategoriesCallback,
+                      session: AsyncSession | Session,
+                      language: Language) -> tuple[str, InlineKeyboardBuilder]:
+        """Buys one product right away from the balance, without the cart."""
+        from sqlalchemy import select, update
+        from db import session_execute
+        from models.user import User
+        from services.subcategory import SubcategoryService
+        kb_builder = InlineKeyboardBuilder()
+        back_to_catalog = AllCategoriesCallback.create(level=0).get_back_button(language, 0)
+        user = await UserRepository.get_by_tgid(callback.from_user.id, session)
+        # Locks the buyer's row, so two quick taps can't both spend the same balance; read the balance fresh.
+        top_up_amount, consume_records = (await session_execute(
+            select(User.top_up_amount, User.consume_records).where(User.id == user.id).with_for_update(),
+            session)).one()
+        quantity = callback_data.quantity or 0
+        available_qty = await ItemRepository.get_available_qty(callback_data.item_type, callback_data.category_id,
+                                                               callback_data.subcategory_id, session)
+        if quantity < 1 or callback_data.item_type != ItemType.DIGITAL or available_qty < quantity:
+            await session.rollback()
+            kb_builder.row(back_to_catalog)
+            return get_text(language, BotEntity.USER, "buy_now_out_of_stock"), kb_builder
+        item = await ItemRepository.get_single(callback_data.item_type, callback_data.category_id,
+                                               callback_data.subcategory_id, session)
+        total_price = round(item.price * quantity, 2)
+        balance = top_up_amount - consume_records
+        if balance + 1e-9 < total_price:
+            await session.rollback()
+            kb_builder.row(SubcategoryService.top_up_button(
+                SubcategoryService.top_up_amount_for(total_price - balance), language))
+            kb_builder.row(back_to_catalog)
+            return get_text(language, BotEntity.USER, "buy_now_not_enough").format(
+                missing=total_price - balance, currency_sym=config.CURRENCY.get_localized_symbol()), kb_builder
+        purchased_items = await ItemRepository.get_purchased_items(callback_data.item_type,
+                                                                   callback_data.category_id,
+                                                                   callback_data.subcategory_id,
+                                                                   quantity, session)
+        if len(purchased_items) < quantity:
+            await session.rollback()
+            kb_builder.row(back_to_catalog)
+            return get_text(language, BotEntity.USER, "buy_now_out_of_stock"), kb_builder
+        buy_dto = await BuyRepository.create(BuyDTO(buyer_id=user.id,
+                                                    total_price=total_price,
+                                                    discount=0,
+                                                    shipping_option_id=None,
+                                                    status=BuyStatus.COMPLETED), session)
+        await BuyItemRepository.create_single(BuyItemDTO(buy_id=buy_dto.id,
+                                                         item_ids=[item.id for item in purchased_items]), session)
+        for purchased_item in purchased_items:
+            purchased_item.is_sold = True
+        await ItemRepository.update(purchased_items, session)
+        await session_execute(update(User).where(User.id == user.id)
+                              .values(consume_records=User.consume_records + total_price), session)
+        await session_commit(session)
+        user = await UserRepository.get_by_tgid(callback.from_user.id, session)
+        kb_builder.button(
+            text=get_text(language, BotEntity.USER, "purchase_history_item").format(
+                buy_id=buy_dto.id,
+                total_price=buy_dto.total_price,
+                currency_sym=config.CURRENCY.get_localized_symbol()),
+            callback_data=MyProfileCallback.create(level=4, buy_id=buy_dto.id))
+        kb_builder.row(back_to_catalog)
+        await DeliveryService.deliver(callback.bot, callback.from_user.id, purchased_items, language)
+        await NotificationService.new_buy(buy_dto, user, session)
+        return get_text(language, BotEntity.USER, "purchase_completed"), kb_builder
 
     @staticmethod
     async def create_buttons(telegram_id: int,
@@ -349,11 +418,18 @@ class CartService:
                              shipping_option_id=shipping_option.id if shipping_option else None,
                              status=BuyStatus.PAID if shipping_option else BuyStatus.COMPLETED)
             buy_dto = await BuyRepository.create(buy_dto, session)
+            delivered_items = []
             for cart_item in cart_items:
                 purchased_items = await ItemRepository.get_purchased_items(cart_item.item_type,
                                                                            cart_item.category_id,
                                                                            cart_item.subcategory_id, cart_item.quantity,
                                                                            session)
+                if len(purchased_items) < cart_item.quantity:
+                    # A parallel purchase took the last units: sell nothing rather than a partial order
+                    await session.rollback()
+                    kb_builder.row(callback_data.get_back_button(language, 0))
+                    return get_text(language, BotEntity.USER, "out_of_stock_race"), kb_builder
+                delivered_items.extend(purchased_items)
                 item_ids = [item.id for item in purchased_items]
                 buy_item_dto = BuyItemDTO(buy_id=buy_dto.id, item_ids=item_ids)
                 await BuyItemRepository.create_single(buy_item_dto, session)
@@ -373,6 +449,7 @@ class CartService:
             user.consume_records = user.consume_records + cart_total_price
             await UserRepository.update(user, session)
             await session_commit(session)
+            await DeliveryService.deliver(callback.bot, callback.from_user.id, delivered_items, language)
             await NotificationService.new_buy(buy_dto, user, session)
             return msg, kb_builder
         elif callback_data.confirmation is False:

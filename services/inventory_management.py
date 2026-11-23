@@ -1,10 +1,11 @@
 from aiogram.fsm.context import FSMContext
+from services.photo_stock import PhotoStockService
 from aiogram.types import Message, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
-from callbacks import InventoryManagementCallback
+from callbacks import InventoryManagementCallback, CatalogCallback
 from db import session_commit
 from enums.add_type import AddType
 from enums.bot_entity import BotEntity
@@ -68,8 +69,11 @@ class InventoryManagementService:
             case AddType.TXT:
                 return get_text(language, BotEntity.ADMIN, "add_items_txt_msg"), kb_markup
             case AddType.MENU:
-                await state.set_state(InventoryManagementStates.item_type)
-                return get_text(language, BotEntity.ADMIN, "add_items_item_type"), kb_markup
+                await PhotoStockService.clear(state.key.user_id)
+                # The shop sells digital goods, so the "item type" question is skipped.
+                await state.update_data(item_type=ItemType.DIGITAL.value)
+                await state.set_state(InventoryManagementStates.category)
+                return get_text(language, BotEntity.ADMIN, "add_items_category"), kb_markup
 
     @staticmethod
     async def delete_confirmation(callback_data: InventoryManagementCallback,
@@ -151,15 +155,33 @@ class InventoryManagementService:
         elif current_state == InventoryManagementStates.private_data:
             success_msg = get_text(language, BotEntity.ADMIN, "add_items_price").format(
                     currency_text=config.CURRENCY.get_localized_text())
+            ready = False
             if ItemType(state_data['item_type'].upper()) == ItemType.PHYSICAL:
                 if message.html_text.isdecimal():
                     await state.update_data(items_qty=int(message.html_text))
-                    await state.set_state(InventoryManagementStates.price)
-                    msg = success_msg
+                    ready = True
                 else:
                     msg = get_text(language, BotEntity.ADMIN, "add_items_private_data_physical")
+            elif PhotoStockService.is_done_word(message.text):
+                if await PhotoStockService.count(message.from_user.id) > 0:
+                    await state.update_data(private_data="")
+                    ready = True
+                else:
+                    msg = get_text(language, BotEntity.ADMIN, "add_items_private_data")
             else:
                 await state.update_data(private_data=message.html_text)
+                ready = True
+            if ready and state_data.get("restock"):
+                # "Add more" on an existing product: its price is already known.
+                count = await InventoryManagementService._create_items(await state.get_data(),
+                                                                       message.from_user.id, session)
+                await state.clear()
+                msg = get_text(language, BotEntity.ADMIN, "add_items_success").format(adding_result=count)
+                cancel_button = InlineKeyboardButton(
+                    text=get_text(language, BotEntity.COMMON, "back_button"),
+                    callback_data=CatalogCallback.create(1, state_data['restock_category_id'],
+                                                         state_data['restock_subcategory_id']).pack())
+            elif ready:
                 await state.set_state(InventoryManagementStates.price)
                 msg = success_msg
         else:
@@ -167,32 +189,35 @@ class InventoryManagementService:
                 price = float(message.html_text)
                 assert (price > 0)
                 await state.update_data(price=message.html_text)
-                state_data = await state.get_data()
-                item_type = ItemType(state_data['item_type'].upper())
-                category = await CategoryRepository.get_or_create(state_data['category_name'], session)
-                subcategory = await SubcategoryRepository.get_or_create(state_data['subcategory_name'], session)
-                if item_type == ItemType.PHYSICAL:
-                    items_list = [ItemDTO(item_type=item_type,
-                                          category_id=category.id,
-                                          subcategory_id=subcategory.id,
-                                          description=state_data['description'],
-                                          price=float(state_data['price']),
-                                          private_data=None) for _ in range(state_data['items_qty'])]
-                else:
-                    items_list = [ItemDTO(item_type=item_type,
-                                          category_id=category.id,
-                                          subcategory_id=subcategory.id,
-                                          description=state_data['description'],
-                                          price=float(state_data['price']),
-                                          private_data=private_data) for private_data in
-                                  state_data['private_data'].split('\n')]
-                await ItemRepository.add_many(items_list, session)
-                await session_commit(session)
+                count = await InventoryManagementService._create_items(await state.get_data(),
+                                                                       message.from_user.id, session)
                 await state.clear()
-                msg = get_text(language, BotEntity.ADMIN, "add_items_success").format(adding_result=len(items_list))
+                msg = get_text(language, BotEntity.ADMIN, "add_items_success").format(adding_result=count)
                 cancel_button.text = get_text(language, BotEntity.COMMON, "back_button")
             except Exception as _:
                 msg = get_text(language, BotEntity.ADMIN, "add_items_price").format(
                     currency_text=config.CURRENCY.get_localized_text())
         kb_builder.row(cancel_button)
         return msg, kb_builder
+
+    @staticmethod
+    async def _create_items(state_data: dict, admin_id: int, session: AsyncSession) -> int:
+        item_type = ItemType(state_data['item_type'].upper())
+        if state_data.get("restock"):
+            category_id = state_data['restock_category_id']
+            subcategory_id = state_data['restock_subcategory_id']
+        else:
+            category_id = (await CategoryRepository.get_or_create(state_data['category_name'], session)).id
+            subcategory_id = (await SubcategoryRepository.get_or_create(state_data['subcategory_name'], session)).id
+        common = dict(item_type=item_type, category_id=category_id, subcategory_id=subcategory_id,
+                      description=state_data['description'], price=float(state_data['price']))
+        if item_type == ItemType.PHYSICAL:
+            items_list = [ItemDTO(**common, private_data=None) for _ in range(state_data['items_qty'])]
+        else:
+            items_list = [ItemDTO(**common, private_data=private_data)
+                          for private_data in state_data.get('private_data', '').split('\n') if private_data.strip()]
+            items_list += [ItemDTO(**common, private_data=photo_item['private_data'], photo_id=photo_item['photo_id'])
+                           for photo_item in await PhotoStockService.pop_all(admin_id)]
+        await ItemRepository.add_many(items_list, session)
+        await session_commit(session)
+        return len(items_list)

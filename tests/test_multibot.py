@@ -7,9 +7,11 @@ import config
 from enums.announcement_type import AnnouncementType
 from enums.language import Language
 from models.user import UserDTO
-from multibot import command_add_bot, on_startup
 from services.announcement import AnnouncementService
-from services.multibot import MultibotService
+from enums.storefront_status import StorefrontStatus
+from repositories.storefront_bot import StorefrontBotRepository
+from services.multibot import MultibotService, AddBotResult
+from utils.token_crypto import decrypt_token, encrypt_token, webhook_secret
 from services.notification import NotificationService
 
 
@@ -56,7 +58,7 @@ class _FakeBot:
         if isinstance(action, Exception):
             raise action
         username = self.behavior.get("username", "child_bot")
-        return SimpleNamespace(username=username)
+        return SimpleNamespace(id=self.behavior.get("id", 4242), username=username)
 
     async def set_webhook(self, url, **kwargs):
         action = self.behavior.get("set_webhook")
@@ -81,14 +83,24 @@ class _FakeBot:
 
 
 class _FakeMessage:
+    status_edits = []
     def __init__(self):
         self.answers = []
         self.chat = SimpleNamespace(id=77)
         self.message_id = 501
+        self.html_text = "announcement"
+        self.caption = None
 
     async def answer(self, text):
         self.answers.append(text)
-        return SimpleNamespace(message_id=900, chat=SimpleNamespace(id=123))
+        message = SimpleNamespace(message_id=900, chat=SimpleNamespace(id=123), edits=[])
+
+        async def edit_text(new_text):
+            message.edits.append(new_text)
+            _FakeMessage.status_edits.append(new_text)
+
+        message.edit_text = edit_text
+        return message
 
     async def edit_reply_markup(self):
         return None
@@ -100,136 +112,236 @@ class _FakeCallback:
         self.bot = _FakeBot("main-token")
 
 
-@pytest.mark.asyncio
-async def test_multibot_token_storage_ignores_main_token():
-    redis = _FakeRedis()
-
-    assert await MultibotService.add_token("child-token", redis) is True
-    assert await MultibotService.add_token("child-token", redis) is False
-    assert await MultibotService.add_token(config.TOKEN, redis) is False
-    assert await MultibotService.get_child_tokens(redis) == ["child-token"]
-
-    await MultibotService.remove_token("child-token", redis)
-
-    assert await MultibotService.get_child_tokens(redis) == []
+TEST_FERNET_KEY = "ytaVe5Hyz5mwOug_TCw8lbN_hoEZtogpkN7aBmFSzGI="
 
 
-@pytest.mark.asyncio
-async def test_command_add_bot_rejects_main_token(monkeypatch):
-    message = _FakeMessage()
-    parent_bot = SimpleNamespace(session=_FakeSession())
-    monkeypatch.setattr("multibot.is_bot_token", lambda token: True)
-
-    await command_add_bot(message, SimpleNamespace(args=config.TOKEN), parent_bot)
-
-    assert "main bot token" in message.answers[-1].lower()
+@pytest.fixture(autouse=True)
+def _multibot_config(monkeypatch):
+    monkeypatch.setattr("config.BOT_TOKEN_ENCRYPTION_KEY", TEST_FERNET_KEY, raising=False)
+    monkeypatch.setattr("config.STOREFRONT_MAX_USERS", 2, raising=False)
+    monkeypatch.setattr("config.WEBHOOK_SECRET_TOKEN", None, raising=False)
 
 
-@pytest.mark.asyncio
-async def test_command_add_bot_rejects_duplicate(monkeypatch):
-    message = _FakeMessage()
-    parent_bot = SimpleNamespace(session=_FakeSession())
-    monkeypatch.setattr("multibot.is_bot_token", lambda token: True)
-
-    async def _fake_has_token(token):
-        return True
-
-    monkeypatch.setattr("multibot.MultibotService.has_token", _fake_has_token)
-
-    await command_add_bot(message, SimpleNamespace(args="123:abc"), parent_bot)
-
-    assert "already" in message.answers[-1].lower()
+def _storefront(storefront_id, username, status=StorefrontStatus.ACTIVE, max_users=None, token="1:child"):
+    return SimpleNamespace(id=storefront_id, telegram_bot_id=1000 + storefront_id, username=username,
+                           token_encrypted=encrypt_token(token), token_hash=str(storefront_id),
+                           status=status, max_users=max_users)
 
 
-@pytest.mark.asyncio
-async def test_command_add_bot_saves_valid_token(monkeypatch):
-    message = _FakeMessage()
-    parent_bot = SimpleNamespace(session=_FakeSession())
-    added_tokens = []
-    created_bots = []
+class _NullDbSession:
+    async def __aenter__(self):
+        return object()
 
-    async def _fake_has_token(token):
+    async def __aexit__(self, *args):
         return False
 
-    async def _fake_add_token(token):
-        added_tokens.append(token)
-        return True
 
-    def _fake_bot_factory(token, session):
-        bot = _FakeBot(token, behavior={"username": "shop_child"})
-        bot.session = session
+def test_token_encryption_roundtrip():
+    encrypted = encrypt_token("123:secret")
+    assert "secret" not in encrypted
+    assert decrypt_token(encrypted) == "123:secret"
+    assert webhook_secret(1) != webhook_secret(2)
+
+
+def test_pick_least_loaded_respects_capacity_and_exclusion():
+    first, second, third = _storefront(1, "a"), _storefront(2, "b"), _storefront(3, "c", max_users=5)
+    counts = {1: 2, 2: 1, 3: 4}
+    assert StorefrontBotRepository.pick_least_loaded([first, second, third], counts).id == 2
+    assert StorefrontBotRepository.pick_least_loaded([first, second, third], counts, exclude_id=2).id == 3
+    assert StorefrontBotRepository.pick_least_loaded([first], counts) is None
+
+
+@pytest.mark.asyncio
+async def test_add_bot_rejects_main_token_and_duplicates(monkeypatch):
+    result, _ = await MultibotService.add_bot(config.TOKEN, "https://example.com/webhook/bot/{bot_id}", object())
+    assert result == AddBotResult.MAIN_TOKEN
+
+    async def _fake_get_by_token_hash(hashed, session):
+        return _storefront(1, "a")
+
+    monkeypatch.setattr("services.multibot.StorefrontBotRepository.get_by_token_hash", _fake_get_by_token_hash)
+    result, _ = await MultibotService.add_bot("1:child", "https://example.com/webhook/bot/{bot_id}", object())
+    assert result == AddBotResult.DUPLICATE
+
+
+@pytest.mark.asyncio
+async def test_add_bot_stores_encrypted_token_and_sets_secret_webhook(monkeypatch):
+    created_bots = []
+    saved = []
+
+    async def _none(*args, **kwargs):
+        return None
+
+    async def _fake_create(storefront, session):
+        storefront.id = 7
+        saved.append(storefront)
+        return storefront
+
+    def _fake_build_bot(token):
+        bot = _FakeBot(token, {"username": "shop_seven_bot"})
         created_bots.append(bot)
         return bot
 
-    monkeypatch.setattr("multibot.is_bot_token", lambda token: True)
-    monkeypatch.setattr("multibot.MultibotService.has_token", _fake_has_token)
-    monkeypatch.setattr("multibot.MultibotService.add_token", _fake_add_token)
-    monkeypatch.setattr("multibot.Bot", _fake_bot_factory)
+    monkeypatch.setattr("services.multibot.StorefrontBotRepository.get_by_token_hash", _none)
+    monkeypatch.setattr("services.multibot.StorefrontBotRepository.get_by_telegram_bot_id", _none)
+    monkeypatch.setattr("services.multibot.StorefrontBotRepository.create", _fake_create)
+    monkeypatch.setattr("services.multibot.StorefrontBot", lambda **kwargs: SimpleNamespace(**kwargs))
+    monkeypatch.setattr("services.multibot.session_commit", _none)
+    monkeypatch.setattr("services.multibot.MultibotService.build_bot", _fake_build_bot)
 
-    await command_add_bot(message, SimpleNamespace(args="123456:ABCDEF"), parent_bot)
+    result, storefront = await MultibotService.add_bot("777:child-secret",
+                                                       "https://example.com/webhook/bot/{bot_id}", object())
 
-    assert added_tokens == ["123456:ABCDEF"]
-    assert "shop_child" in message.answers[-1]
-    assert created_bots[0].webhooks[-1][0].endswith("/webhook/bot/123456:ABCDEF")
+    assert result == AddBotResult.ADDED
+    assert storefront.username == "shop_seven_bot"
+    assert "child-secret" not in saved[0].token_encrypted
+    assert decrypt_token(saved[0].token_encrypted) == "777:child-secret"
+    url, kwargs = created_bots[0].webhooks[-1]
+    assert url == "https://example.com/webhook/bot/7"
+    assert "child-secret" not in url
+    assert kwargs["secret_token"] == webhook_secret(7)
 
 
 @pytest.mark.asyncio
-async def test_restore_child_bot_webhooks_removes_unauthorized_token(monkeypatch):
-    created_bots = {}
-    removed_tokens = []
+async def test_add_bot_reports_invalid_token(monkeypatch):
+    async def _none(*args, **kwargs):
+        return None
 
-    async def _fake_get_child_tokens(redis_client=None):
-        return ["good-token", "bad-token"]
+    monkeypatch.setattr("services.multibot.StorefrontBotRepository.get_by_token_hash", _none)
+    monkeypatch.setattr("services.multibot.MultibotService.build_bot",
+                        lambda token: _FakeBot(token, {"get_me": TelegramUnauthorizedError(method=None, message="bad")}))
 
-    async def _fake_remove_token(token, redis_client=None):
-        removed_tokens.append(token)
+    result, storefront = await MultibotService.add_bot("1:bad", "https://example.com/webhook/bot/{bot_id}", object())
 
-    def _fake_build_bot(token):
-        behavior = {"username": "restored"}
-        if token == "bad-token":
-            behavior["get_me"] = TelegramUnauthorizedError(
-                method=SimpleNamespace(__api_method__="getMe"),
-                message="unauthorized"
-            )
-        bot = _FakeBot(token, behavior=behavior)
-        created_bots[token] = bot
-        return bot
-
-    monkeypatch.setattr("services.multibot.MultibotService.get_child_tokens", _fake_get_child_tokens)
-    monkeypatch.setattr("services.multibot.MultibotService.remove_token", _fake_remove_token)
-    monkeypatch.setattr("services.multibot.MultibotService.build_bot", _fake_build_bot)
-
-    await MultibotService.restore_child_bot_webhooks("https://example.com/webhook/bot/{bot_token}")
-
-    assert created_bots["good-token"].webhooks[-1][0].endswith("/good-token")
-    assert removed_tokens == ["bad-token"]
+    assert result == AddBotResult.INVALID
+    assert storefront is None
 
 
 @pytest.mark.asyncio
-async def test_send_to_user_multibot_uses_all_tokens_and_sleep(monkeypatch):
-    sleep_calls = []
-    built_bots = []
+async def test_ban_and_relocate_spreads_customers(monkeypatch):
+    banned, second, third = _storefront(1, "a"), _storefront(2, "b"), _storefront(3, "c")
+    assignments = {}
+    statuses = {}
 
-    async def _fake_get_all_tokens(redis_client=None):
-        return ["main-token", "child-token"]
+    async def _fake_set_status(storefront_id, status, session):
+        statuses[storefront_id] = status
+        banned.status = status
 
-    async def _fake_sleep(delay):
-        sleep_calls.append(delay)
+    async def _fake_get_ids(storefront_id, session):
+        return [11, 12, 13, 14, 15]
+
+    async def _fake_get_active(session):
+        return [s for s in (banned, second, third) if s.status == StorefrontStatus.ACTIVE]
+
+    async def _fake_counts(session):
+        return {1: 5, 2: 1, 3: 0}
+
+    async def _fake_assign(telegram_id, storefront_id, session):
+        assignments[telegram_id] = storefront_id
+
+    async def _none(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("services.multibot.StorefrontBotRepository.set_status", _fake_set_status)
+    monkeypatch.setattr("services.multibot.StorefrontBotRepository.get_user_telegram_ids", _fake_get_ids)
+    monkeypatch.setattr("services.multibot.StorefrontBotRepository.get_active", _fake_get_active)
+    monkeypatch.setattr("services.multibot.StorefrontBotRepository.get_user_counts", _fake_counts)
+    monkeypatch.setattr("services.multibot.StorefrontBotRepository.assign_user", _fake_assign)
+    monkeypatch.setattr("services.multibot.session_commit", _none)
+
+    relocations = await MultibotService.ban_and_relocate(1, object())
+
+    assert statuses == {1: StorefrontStatus.BANNED}
+    # capacity is 2 per storefront: b has 1 free slot, c has 2, the rest stay unplaced
+    assert sorted(assignments.values()) == [2, 3, 3]
+    assert [r.storefront is None for r in relocations].count(True) == 2
+
+
+@pytest.mark.asyncio
+async def test_notify_relocations_skips_unplaced_and_forbidden(monkeypatch):
+    from aiogram.exceptions import TelegramForbiddenError
+    from services.multibot import Relocation
+
+    async def _no_sleep(delay):
+        return None
+
+    monkeypatch.setattr("services.multibot.asyncio.sleep", _no_sleep)
+    main_bot = _FakeBot("main")
+    target = _storefront(2, "b")
+    relocations = [Relocation(11, target), Relocation(12, None)]
+
+    sent = await MultibotService.notify_relocations(main_bot, relocations, lambda r: ("moved", None))
+
+    assert sent == 1
+    assert main_bot.sent_messages == [(11, "moved", None)]
+
+    blocked_bot = _FakeBot("main", {"send_message": TelegramForbiddenError(method=None, message="blocked")})
+    assert await MultibotService.notify_relocations(blocked_bot, relocations, lambda r: ("moved", None)) == 0
+
+
+@pytest.mark.asyncio
+async def test_send_to_user_prefers_own_storefront_then_main(monkeypatch):
+    from aiogram.exceptions import TelegramForbiddenError
+    built = []
+
+    async def _fake_tokens(telegram_id, include_all_storefronts, main_only=False):
+        return [(2, "storefront-token"), (None, "main-token")]
+
+    async def _no_sleep(delay):
+        return None
 
     def _fake_build_bot(token):
-        bot = _FakeBot(token)
-        built_bots.append(bot)
+        behavior = {"send_message": TelegramForbiddenError(method=None, message="blocked")} \
+            if token == "storefront-token" else {}
+        bot = _FakeBot(token, behavior)
+        built.append(bot)
         return bot
 
-    monkeypatch.setattr("services.multibot.MultibotService.get_all_tokens_with_main", _fake_get_all_tokens)
+    monkeypatch.setattr("services.multibot.MultibotService._get_delivery_tokens", _fake_tokens)
     monkeypatch.setattr("services.multibot.MultibotService.build_bot", _fake_build_bot)
-    monkeypatch.setattr("services.multibot.asyncio.sleep", _fake_sleep)
+    monkeypatch.setattr("services.multibot.asyncio.sleep", _no_sleep)
 
-    sent_count = await MultibotService.send_message_to_user("hello", 100500)
+    sent, only_forbidden = await MultibotService.send_message_to_user_verbose("hello", 100500)
 
-    assert sent_count == 2
-    assert [bot.token for bot in built_bots] == ["main-token", "child-token"]
-    assert sleep_calls == [0.3]
+    assert (sent, only_forbidden) == (1, False)
+    assert [bot.token for bot in built] == ["storefront-token", "main-token"]
+    assert built[1].sent_messages == [(100500, "hello", None)]
+
+
+@pytest.mark.asyncio
+async def test_send_to_user_reports_only_forbidden(monkeypatch):
+    from aiogram.exceptions import TelegramForbiddenError
+
+    async def _fake_tokens(telegram_id, include_all_storefronts, main_only=False):
+        return [(None, "main-token")]
+
+    monkeypatch.setattr("services.multibot.MultibotService._get_delivery_tokens", _fake_tokens)
+    monkeypatch.setattr("services.multibot.MultibotService.build_bot",
+                        lambda token: _FakeBot(token, {"send_message": TelegramForbiddenError(method=None, message="x")}))
+
+    assert await MultibotService.send_message_to_user_verbose("hello", 1) == (0, True)
+
+
+@pytest.mark.asyncio
+async def test_storefront_cache_builds_bot_once_and_forgets(monkeypatch):
+    from services.multibot import StorefrontBotCache
+    built = []
+
+    async def _fake_get_token(storefront_id, session):
+        return None if storefront_id == 9 else "5:token"
+
+    monkeypatch.setattr("services.multibot.MultibotService.get_token", _fake_get_token)
+    monkeypatch.setattr("services.multibot.get_db_session", lambda: _NullDbSession())
+    monkeypatch.setattr("services.multibot.create_bot", lambda token, session=None: built.append(token) or token)
+    cache = StorefrontBotCache()
+
+    assert await cache.get(1) == "5:token"
+    assert await cache.get(1) == "5:token"
+    assert built == ["5:token"]
+    assert await cache.get(9) is None
+    cache.forget(1)
+    await cache.get(1)
+    assert len(built) == 2
 
 
 @pytest.mark.asyncio
@@ -265,7 +377,7 @@ async def test_announcement_service_counts_multibot_successes(monkeypatch):
     async def _fake_create_announcement_message(announcement_type, session, language):
         return ["chunk-1", "chunk-2"]
 
-    async def _fake_send_message_to_user_verbose(text, telegram_id, reply_markup=None, redis_client=None):
+    async def _fake_send_message_to_user_verbose(text, telegram_id, reply_markup=None, redis_client=None, main_only=False):
         return 2, False
 
     async def _fake_edit_message(message, source_message_id, chat_id):
@@ -289,7 +401,7 @@ async def test_announcement_service_counts_multibot_successes(monkeypatch):
         Language.EN
     )
 
-    assert any("1" in message for message in updates)
+    assert any("1" in message for message in _FakeMessage.status_edits)
 
 
 @pytest.mark.asyncio
@@ -309,7 +421,7 @@ async def test_announcement_service_marks_user_inactive_when_all_multibot_attemp
     async def _fake_create_announcement_message(announcement_type, session, language):
         return ["chunk-1", "chunk-2"]
 
-    async def _fake_send_message_to_user_verbose(text, telegram_id, reply_markup=None, redis_client=None):
+    async def _fake_send_message_to_user_verbose(text, telegram_id, reply_markup=None, redis_client=None, main_only=False):
         return 0, True
 
     async def _fake_update(user_dto, session):
@@ -358,7 +470,7 @@ async def test_announcement_service_marks_restocking_not_new_once(monkeypatch):
     async def _fake_create_announcement_message(announcement_type, session, language):
         return ["chunk-1"]
 
-    async def _fake_send_message_to_user_verbose(text, telegram_id, reply_markup=None, redis_client=None):
+    async def _fake_send_message_to_user_verbose(text, telegram_id, reply_markup=None, redis_client=None, main_only=False):
         return 1, False
 
     async def _fake_set_not_new(session):
@@ -387,25 +499,3 @@ async def test_announcement_service_marks_restocking_not_new_once(monkeypatch):
     )
 
     assert len(set_not_new_calls) == 1
-
-
-@pytest.mark.asyncio
-async def test_multibot_startup_restores_child_webhooks(monkeypatch):
-    restored = []
-    created = []
-
-    async def _fake_create_db_and_tables():
-        created.append(True)
-
-    async def _fake_restore(url):
-        restored.append(url)
-
-    bot = _FakeBot("main-token")
-
-    monkeypatch.setattr("multibot.create_db_and_tables", _fake_create_db_and_tables)
-    monkeypatch.setattr("multibot.MultibotService.restore_child_bot_webhooks", _fake_restore)
-
-    await on_startup(SimpleNamespace(), bot)
-
-    assert created == [True]
-    assert restored == ["https://example.com/webhook/bot/{bot_token}"]

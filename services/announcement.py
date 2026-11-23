@@ -23,15 +23,25 @@ from utils.utils import get_text
 
 class AnnouncementService:
     @staticmethod
+    async def _update_status(message, text: str) -> None:
+        """Edits the progress message through the bot that sent it (in multibot mode that is a storefront)."""
+        try:
+            await message.edit_text(text)
+        except Exception as exception:
+            logging.error(exception)
+
+    @staticmethod
     async def _send_generated_announcement_to_user(callback: CallbackQuery,
                                                    telegram_id: int,
-                                                   messages: list[str]) -> tuple[bool, bool]:
+                                                   messages: list[str],
+                                                   main_only: bool = False) -> tuple[bool, bool]:
         if config.MULTIBOT:
             had_only_forbidden_errors = False
             for message_text in messages:
                 sent_count, chunk_had_only_forbidden_errors = await MultibotService.send_message_to_user_verbose(
                     text=message_text,
-                    telegram_id=telegram_id
+                    telegram_id=telegram_id,
+                    main_only=main_only
                 )
                 if sent_count == 0:
                     return False, chunk_had_only_forbidden_errors
@@ -84,6 +94,7 @@ class AnnouncementService:
             AnnouncementType.RESTOCKING,
             AnnouncementType.CURRENT_STOCK
         )
+        content = MultibotService.extract_content(callback.message) if config.MULTIBOT else None
         if is_generated_announcement:
             generated_messages = await ItemService.create_announcement_message(
                 callback_data.announcement_type,
@@ -96,7 +107,8 @@ class AnnouncementService:
                     is_sent, had_only_forbidden_errors = await AnnouncementService._send_generated_announcement_to_user(
                         callback,
                         user.telegram_id,
-                        generated_messages
+                        generated_messages,
+                        getattr(callback_data, "via_main", False)
                     )
                     if is_sent:
                         counter += 1
@@ -104,10 +116,8 @@ class AnnouncementService:
                         user.can_receive_messages = False
                         await UserRepository.update(user, session)
                 elif config.MULTIBOT:
-                    sent_count, had_only_forbidden_errors = await MultibotService.copy_message_to_user(
-                        from_chat_id=callback.message.chat.id,
-                        message_id=callback.message.message_id,
-                        telegram_id=user.telegram_id
+                    sent_count, had_only_forbidden_errors = await MultibotService.send_content_to_user(
+                        content, user.telegram_id, getattr(callback_data, "via_main", False)
                     )
                     if sent_count > 0:
                         counter += 1
@@ -135,19 +145,15 @@ class AnnouncementService:
                         users_count=all_users_count,
                         status=get_text(language, BotEntity.ADMIN, "in_progress")
                     )
-                    await NotificationService.edit_message(message=msg,
-                                                           source_message_id=message.message_id,
-                                                           chat_id=message.chat.id)
+                    await AnnouncementService._update_status(message, msg)
                 await session_commit(session)
         if callback_data.announcement_type == AnnouncementType.RESTOCKING:
             await ItemRepository.set_not_new(session)
             await session_commit(session)
-        await NotificationService.edit_message(
-            message=message_template.format(
+        await AnnouncementService._update_status(
+            message, message_template.format(
                 counter=counter,
                 len=len(active_users),
                 users_count=all_users_count,
                 status=get_text(language, BotEntity.ADMIN, "finished")
-            ),
-            source_message_id=message.message_id,
-            chat_id=message.chat.id)
+            ))

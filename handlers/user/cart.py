@@ -1,3 +1,4 @@
+from services.ownership import OwnershipService
 from aiogram import F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -107,6 +108,9 @@ async def navigate_cart_process(callback: CallbackQuery,
                                 session: AsyncSession | Session,
                                 state: FSMContext,
                                 language: Language):
+    if callback_data.cart_item_id > 0 and not await OwnershipService.owns_cart_item(
+            callback.from_user.id, callback_data.cart_item_id, session):
+        return await callback.answer()
     current_level = callback_data.level
 
     levels = {
