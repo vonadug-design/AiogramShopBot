@@ -12,12 +12,12 @@ from models.staff_member import StaffMember
 class StaffService:
     """Roles: owner (from ADMIN_ID_LIST), admin and moderator (from the staff_members table)."""
     _cache: dict[int, StaffRole] = {}
-    _loaded_at: float = 0.0
+    _loaded_at: float | None = None
     CACHE_TTL = 30
 
     @classmethod
     def invalidate(cls):
-        cls._loaded_at = 0.0
+        cls._loaded_at = None
 
     @classmethod
     async def _load(cls, session: AsyncSession | None = None):
@@ -36,7 +36,7 @@ class StaffService:
     async def get_role(cls, telegram_id: int, session: AsyncSession | None = None) -> StaffRole | None:
         if telegram_id in config.ADMIN_ID_LIST:
             return StaffRole.OWNER
-        if time.monotonic() - cls._loaded_at > cls.CACHE_TTL:
+        if cls._loaded_at is None or time.monotonic() - cls._loaded_at > cls.CACHE_TTL:
             await cls._load(session)
         return cls._cache.get(telegram_id)
 
